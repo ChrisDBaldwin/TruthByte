@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta
+            http-equiv="Content-Type"
+            content="text/html; charset=utf-8"
+        />
+        <style>
+            * {
+                padding: 0;
+                margin: 0;
+                box-sizing: content-box;
+            }
+
+            canvas {
+                padding: 0;
+                margin: 0;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+
+    <body>
+        <!-- Create the canvas that the C++ code will draw into -->
+        <canvas
+            id="canvas"
+            oncontextmenu="event.preventDefault()"
+        ></canvas>
+
+        <!-- Allow the C++ to access the canvas element -->
+        <script type="text/javascript">
+            var Module = {
+                canvas: (function () {
+                    return document.getElementById("canvas");
+                })(),
+            };
+        </script>
+
+        <script>
+            // Modern WASM loader with JS interop
+            fetch('truthbyte.wasm').then(response =>
+                response.arrayBuffer()
+            ).then(bytes =>
+                WebAssembly.instantiate(bytes, {
+                    env: {
+                        // js_get_token: () => 0, // stub
+                        // js_get_token_len: () => 0,
+                        // js_get_session_id: () => 0,
+                        // js_get_session_id_len: () => 0,
+                        // js_set_invited_shown: (val) => console.log("invited:", !!val),
+                        // js_get_invited_shown: () => 1,
+                        // Add any other imports needed by your Zig code
+                    }
+                })
+            ).then(results => {
+                const instance = results.instance;
+                // If your WASM expects to draw to a canvas, you may need to pass the canvas or set up context here
+                // For raylib-zig, this is usually handled internally
+                console.log("WASM loaded", instance);
+            });
+        </script>
+    </body>
+</html>

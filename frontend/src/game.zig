@@ -1,0 +1,456 @@
+const std = @import("std");
+const rl = @import("raylib");
+
+// --- Layout Constants ---
+const MARGIN = 24;
+const LARGE_FONT_SIZE = 32;
+const MEDIUM_FONT_SIZE = 24;
+const SMALL_FONT_SIZE = 20;
+const ELEMENT_SPACING = 40;
+const SMALL_SPACING = 20;
+const MEDIUM_SPACING = 60;
+const TEXT_PADDING = 10;
+const BUTTON_TEXT_OFFSET_X = 60;
+const BUTTON_TEXT_OFFSET_Y = 25;
+const CONFIRM_TEXT_OFFSET_X = 40;
+const CONFIRM_TEXT_OFFSET_Y = 18;
+const THICK_BORDER = 8;
+const THIN_BORDER = 4;
+const INPUT_BORDER = 2;
+const CURSOR_WIDTH = 10;
+const CURSOR_HEIGHT = 20;
+
+// --- UI Element Dimensions ---
+const COLOR_BUTTON_WIDTH = 80;
+const COLOR_BUTTON_HEIGHT = 40;
+const BOTTOM_BUTTON_WIDTH = 90;
+const BOTTOM_BUTTON_HEIGHT = 40;
+const BOTTOM_BUTTON_GAP = 20;
+const INPUT_BOX_WIDTH = 400;
+const INPUT_BOX_HEIGHT = 40;
+const BUTTON_GAP = 40;
+
+// --- Types and constants from main.zig ---
+
+const Palette = struct {
+    bg: rl.Color,
+    fg: rl.Color,
+};
+
+const accent = rl.Color{ .r = 255, .g = 99, .b = 71, .a = 255 }; // tomato (stark)
+const button_w = 240;
+const button_h = 80;
+const button_y = 220;
+const button_gap = 60;
+const confirm_w = 200;
+const confirm_h = 60;
+const confirm_y = button_y + button_h + button_gap + 30;
+const NUM_PALETTES = 100;
+
+const QuestionResponse = struct {
+    question_id: []const u8,
+    answer: ?bool = null,
+    start_time: i64 = 0,
+    duration: f64 = 0.0,
+};
+
+const UserSessionResponse = struct {
+    session_id: []const u8 = "",
+    token: []const u8 = "",
+    trust: f32 = 0.0,
+    invitable: bool = false,
+    responses: [10]QuestionResponse,
+    timestamp: i64,
+};
+
+const GameStateEnum = enum { Answering, Submitting, Finished };
+
+const Question = struct {
+    id: [:0]const u8,
+    text: [:0]const u8,
+    answer: bool,
+    tags: []const []const u8 = &.{},
+};
+
+const Session = struct {
+    questions: [10]Question,
+    current: usize = 0,
+    correct: usize = 0,
+    finished: bool = false,
+};
+
+const question_pool = [_]Question{
+    Question{ .id = "q001", .text = "Pizza is a vegetable?", .answer = false, .tags = &.{ "food", "meme" } },
+    Question{ .id = "q002", .text = "The sky is blue?", .answer = true, .tags = &.{ "science", "nature" } },
+    Question{ .id = "q003", .text = "2+2=5?", .answer = false, .tags = &.{"math"} },
+    Question{ .id = "q004", .text = "Water boils at 100C?", .answer = true, .tags = &.{ "science", "physics" } },
+    Question{ .id = "q005", .text = "Cats can fly?", .answer = false, .tags = &.{ "animals", "meme" } },
+    Question{ .id = "q006", .text = "Earth is round?", .answer = true, .tags = &.{ "science", "geography" } },
+    Question{ .id = "q007", .text = "Fire is cold?", .answer = false, .tags = &.{"science"} },
+    Question{ .id = "q008", .text = "Fish can swim?", .answer = true, .tags = &.{"animals"} },
+    Question{ .id = "q009", .text = "Birds are mammals?", .answer = false, .tags = &.{ "animals", "biology" } },
+    Question{ .id = "q010", .text = "Sun rises in the east?", .answer = true, .tags = &.{ "science", "geography" } },
+};
+
+pub const GameState = struct {
+    // Palette and color state
+    palettes: [NUM_PALETTES]Palette = undefined,
+    pastel_bg: rl.Color = rl.Color{ .r = 200, .g = 215, .b = 235, .a = 255 },
+    pastel_fg: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
+    // Game/session state
+    game_state: GameStateEnum = .Answering,
+    session: Session = undefined,
+    user_session: UserSessionResponse = UserSessionResponse{
+        .responses = undefined,
+        .timestamp = 0,
+    },
+    user_trust: f32 = 0.0,
+    invited_shown: bool = false,
+    // UI state
+    input_active: bool = false,
+    input_buffer: [256]u8 = undefined,
+    input_len: usize = 0,
+    // Per-question state
+    response: QuestionResponse = QuestionResponse{ .question_id = "q001", .answer = null },
+    selected: ?bool = null,
+    // PRNG
+    prng: std.Random.DefaultPrng = undefined,
+};
+
+// --- Helper functions and JS interop ---
+
+// extern fn js_get_token() callconv(.C) [*]const u8;
+// extern fn js_get_token_len() usize;
+// extern fn js_get_session_id() callconv(.C) [*]const u8;
+// extern fn js_get_session_id_len() usize;
+// extern fn js_set_invited_shown(val: bool) void;
+// extern fn js_get_invited_shown() bool;
+
+// pub export fn alloc(size: usize) ?[*]u8 {
+//     return std.heap.page_allocator.alloc(u8, size);
+// }
+
+fn hslToRgb(h: f32, s: f32, l: f32) rl.Color {
+    const c = (1 - @abs(2 * l - 1)) * s;
+    const x = c * (1 - @abs(@mod(h * 6, 2) - 1));
+    const m = l - c / 2;
+    var r: f32 = 0;
+    var g: f32 = 0;
+    var b: f32 = 0;
+    if (h < 1.0 / 6.0) {
+        r = c;
+        g = x;
+        b = 0;
+    } else if (h < 2.0 / 6.0) {
+        r = x;
+        g = c;
+        b = 0;
+    } else if (h < 3.0 / 6.0) {
+        r = 0;
+        g = c;
+        b = x;
+    } else if (h < 4.0 / 6.0) {
+        r = 0;
+        g = x;
+        b = c;
+    } else if (h < 5.0 / 6.0) {
+        r = x;
+        g = 0;
+        b = c;
+    } else {
+        r = c;
+        g = 0;
+        b = x;
+    }
+    return rl.Color{
+        .r = @as(u8, @intFromFloat((r + m) * 255)),
+        .g = @as(u8, @intFromFloat((g + m) * 255)),
+        .b = @as(u8, @intFromFloat((b + m) * 255)),
+        .a = 255,
+    };
+}
+
+fn initPalettes(state: *GameState) void {
+    var i: usize = 0;
+    while (i < NUM_PALETTES) : (i += 1) {
+        const bg_hue = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(NUM_PALETTES));
+        const fg_hue = @mod(bg_hue + 0.5, 1.0);
+        state.palettes[i] = Palette{
+            .bg = hslToRgb(bg_hue, 0.5, 0.15),
+            .fg = hslToRgb(fg_hue, 0.4, 0.85),
+        };
+    }
+}
+
+fn randomPalette(state: *GameState) Palette {
+    const idx = state.prng.random().intRangeAtMost(usize, 0, NUM_PALETTES - 1);
+    return state.palettes[idx];
+}
+
+fn startSession(state: *GameState) void {
+    state.session = Session{
+        .questions = question_pool,
+        .current = 0,
+        .correct = 0,
+        .finished = false,
+    };
+    // const id_ptr = js_get_session_id();
+    // const id_len = js_get_session_id_len();
+    // const token_ptr = js_get_token();
+    // const token_len = js_get_token_len();
+    // state.user_session.timestamp = std.time.timestamp();
+    // state.user_session.session_id = id_ptr[0..id_len];
+    // state.user_session.token = token_ptr[0..token_len];
+    state.user_session.trust = state.user_trust;
+    state.user_session.invitable = false;
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        state.user_session.responses[i] = QuestionResponse{
+            .question_id = state.session.questions[i].id,
+            .answer = null,
+            .start_time = 0,
+            .duration = 0.0,
+        };
+    }
+    state.game_state = .Answering;
+    // state.invited_shown = js_get_invited_shown();
+}
+
+fn currentResponse(state: *GameState) *QuestionResponse {
+    return &state.user_session.responses[state.session.current];
+}
+
+fn calcTrustScore(state: *GameState) f32 {
+    return @as(f32, @floatFromInt(state.session.correct)) / 10.0;
+}
+
+fn showInviteModal() void {
+    std.debug.print("Invite modal shown!\n", .{});
+}
+
+fn submitResponseBatch(user_session_response: *UserSessionResponse) void {
+    std.debug.print("Submitting session: {any}\n", .{user_session_response});
+}
+
+// --- Exported API ---
+
+pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
+    const state = allocator.create(GameState) catch unreachable;
+    initPalettes(state);
+    state.prng = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.timestamp())));
+    const pal = randomPalette(state);
+    state.pastel_bg = pal.bg;
+    state.pastel_fg = pal.fg;
+    startSession(state);
+    state.input_active = false;
+    state.input_len = 0;
+    state.input_buffer[0] = 0;
+    state.response = QuestionResponse{ .question_id = "q001", .answer = null };
+    state.selected = null;
+    return state;
+}
+
+pub export fn deinit(allocator: *std.mem.Allocator, state: *GameState) callconv(.C) void {
+    allocator.destroy(state);
+}
+
+pub export fn update(state: *GameState) callconv(.C) void {
+    const raylib = rl;
+    const screen_width = rl.getScreenWidth();
+    const screen_height = rl.getScreenHeight();
+
+    // Calculate vertical center and spacing for main UI
+    const ui_block_height = MEDIUM_FONT_SIZE + SMALL_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING + button_h + ELEMENT_SPACING + confirm_h; // Total height of UI elements
+    const ui_start_y = @divTrunc((screen_height - ui_block_height), 2);
+    const progress_y = ui_start_y;
+    const question_y = progress_y + MEDIUM_FONT_SIZE + SMALL_SPACING;
+    const buttons_y = question_y + LARGE_FONT_SIZE + ELEMENT_SPACING;
+    const confirm_button_y = buttons_y + button_h + ELEMENT_SPACING;
+
+    // Calculate positions (same as in draw function)
+    const total_button_width = button_w * 2 + BUTTON_GAP;
+    const buttons_x = @as(f32, @floatFromInt(@divTrunc((screen_width - total_button_width), 2)));
+    const button_rect_true = raylib.Rectangle{ .x = buttons_x, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h };
+    const button_rect_false = raylib.Rectangle{ .x = buttons_x + button_w + BUTTON_GAP, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h };
+    const confirm_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
+    const confirm_rect = raylib.Rectangle{ .x = confirm_x, .y = @as(f32, @floatFromInt(confirm_button_y)), .width = confirm_w, .height = confirm_h };
+
+    // COLOR button in top right
+    const randomize_btn_x = @as(f32, @floatFromInt(screen_width - COLOR_BUTTON_WIDTH - MARGIN));
+    const randomize_btn_y = @as(f32, @floatFromInt(MARGIN));
+    const randomize_btn = raylib.Rectangle{ .x = randomize_btn_x, .y = randomize_btn_y, .width = COLOR_BUTTON_WIDTH, .height = COLOR_BUTTON_HEIGHT };
+
+    // SUBMIT and ANSWER buttons in bottom right
+    const bottom_btn_y = @as(f32, @floatFromInt(screen_height - BOTTOM_BUTTON_HEIGHT - MARGIN));
+    const answer_btn_x = @as(f32, @floatFromInt(screen_width - BOTTOM_BUTTON_WIDTH - MARGIN));
+    const submit_btn_x = answer_btn_x - BOTTOM_BUTTON_WIDTH - BOTTOM_BUTTON_GAP;
+    const submit_btn = raylib.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT };
+    const answer_btn = raylib.Rectangle{ .x = answer_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT };
+
+    // Input box (centered vertically in main UI area)
+    const input_box_x = @as(f32, @floatFromInt(@divTrunc((screen_width - INPUT_BOX_WIDTH), 2)));
+    const input_box_y = @as(f32, @floatFromInt(question_y + MEDIUM_SPACING));
+    const input_box = raylib.Rectangle{ .x = input_box_x, .y = input_box_y, .width = INPUT_BOX_WIDTH, .height = INPUT_BOX_HEIGHT };
+
+    if (raylib.isMouseButtonPressed(.left)) {
+        const mouse = raylib.getMousePosition();
+        if (raylib.checkCollisionPointRec(mouse, submit_btn)) {
+            state.game_state = .Submitting;
+        } else if (raylib.checkCollisionPointRec(mouse, answer_btn)) {
+            startSession(state);
+        } else if (state.game_state == .Submitting and raylib.checkCollisionPointRec(mouse, input_box)) {
+            state.input_active = true;
+        } else if (state.game_state == .Submitting) {
+            state.input_active = false;
+        } else if (raylib.checkCollisionPointRec(mouse, button_rect_true)) {
+            state.selected = true;
+            state.response.answer = true;
+        } else if (raylib.checkCollisionPointRec(mouse, button_rect_false)) {
+            state.selected = false;
+            state.response.answer = false;
+        } else if (raylib.checkCollisionPointRec(mouse, confirm_rect) and state.selected != null) {
+            var r = currentResponse(state);
+            const now = std.time.timestamp();
+            r.answer = state.response.answer;
+            r.duration = @as(f64, @floatFromInt(now - r.start_time));
+            if (state.response.answer == state.session.questions[state.session.current].answer) state.session.correct += 1;
+            state.session.current += 1;
+            if (state.session.current >= 10) {
+                state.session.finished = true;
+                state.game_state = .Finished;
+                state.user_session.trust = calcTrustScore(state);
+                state.user_session.invitable = state.user_session.trust >= 0.85;
+                submitResponseBatch(&state.user_session);
+                if (state.user_session.trust >= 0.85 and !state.invited_shown) {
+                    showInviteModal();
+                    state.invited_shown = true;
+                    // js_set_invited_shown(true);
+                }
+            }
+            state.response.answer = null;
+            state.selected = null;
+        } else if (raylib.checkCollisionPointRec(mouse, randomize_btn)) {
+            const new_pal = randomPalette(state);
+            state.pastel_bg = new_pal.bg;
+            state.pastel_fg = new_pal.fg;
+        }
+    }
+    // Handle text input if input_active
+    if (state.game_state == .Submitting and state.input_active) {
+        var key = raylib.getCharPressed();
+        while (key > 0) : (key = raylib.getCharPressed()) {
+            if (key >= 32 and key <= 126 and state.input_len < state.input_buffer.len - 1) {
+                state.input_buffer[state.input_len] = @as(u8, @intCast(key));
+                state.input_len += 1;
+            }
+        }
+        if (raylib.isKeyPressed(.backspace) and state.input_len > 0) {
+            state.input_len -= 1;
+        }
+        state.input_buffer[state.input_len] = 0;
+    }
+    // Per-question timer start
+    if (state.game_state == .Answering and state.session.current < 10 and currentResponse(state).start_time == 0) {
+        currentResponse(state).start_time = std.time.timestamp();
+    }
+}
+
+pub export fn draw(state: *GameState) callconv(.C) void {
+    const raylib = rl;
+    raylib.beginDrawing();
+    defer raylib.endDrawing();
+    raylib.clearBackground(state.pastel_bg);
+    const screen_width = raylib.getScreenWidth();
+    const screen_height = raylib.getScreenHeight();
+
+    // Calculate vertical center and spacing for main UI (same as update)
+    const ui_block_height = MEDIUM_FONT_SIZE + SMALL_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING + button_h + ELEMENT_SPACING + confirm_h;
+    const ui_start_y = @divTrunc((screen_height - ui_block_height), 2);
+    const progress_y = ui_start_y;
+    const question_y = progress_y + MEDIUM_FONT_SIZE + SMALL_SPACING;
+    const buttons_y = question_y + LARGE_FONT_SIZE + ELEMENT_SPACING;
+    const confirm_button_y = buttons_y + button_h + ELEMENT_SPACING;
+
+    if (state.game_state == .Answering) {
+        const qnum = state.session.current + 1;
+        const qstr = std.fmt.allocPrintZ(std.heap.page_allocator, "{}/10", .{qnum}) catch "?";
+        defer std.heap.page_allocator.free(qstr);
+        const qstr_width = raylib.measureText(qstr, MEDIUM_FONT_SIZE);
+        raylib.drawText(qstr, @divTrunc((screen_width - qstr_width), 2), progress_y, MEDIUM_FONT_SIZE, state.pastel_fg);
+
+        // Center question text
+        const question = state.session.questions[state.session.current].text;
+        const question_width = raylib.measureText(question, LARGE_FONT_SIZE);
+        raylib.drawText(question, @divTrunc((screen_width - question_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
+
+        // Center TRUE/FALSE buttons horizontally
+        const total_button_width = button_w * 2 + BUTTON_GAP;
+        const buttons_x = @as(f32, @floatFromInt(@divTrunc((screen_width - total_button_width), 2)));
+        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == true) THICK_BORDER else THIN_BORDER, if (state.selected == true) accent else state.pastel_fg);
+        raylib.drawText("TRUE", @as(i32, @intFromFloat(buttons_x)) + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.pastel_fg);
+        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x + button_w + BUTTON_GAP, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == false) THICK_BORDER else THIN_BORDER, if (state.selected == false) accent else state.pastel_fg);
+        raylib.drawText("FALSE", @as(i32, @intFromFloat(buttons_x)) + @as(i32, @intFromFloat(button_w)) + BUTTON_GAP + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.pastel_fg);
+
+        // Center confirm button
+        const confirm_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
+        const confirm_color = if (state.selected != null) accent else rl.Color{ .r = 180, .g = 180, .b = 180, .a = 255 };
+        raylib.drawRectangle(@as(i32, @intFromFloat(confirm_x)), confirm_button_y, @as(i32, @intFromFloat(confirm_w)), @as(i32, @intFromFloat(confirm_h)), confirm_color);
+        raylib.drawText("CONFIRM", @as(i32, @intFromFloat(confirm_x)) + CONFIRM_TEXT_OFFSET_X, confirm_button_y + CONFIRM_TEXT_OFFSET_Y, MEDIUM_FONT_SIZE, .white);
+    } else if (state.game_state == .Finished) {
+        const thank_width = raylib.measureText("Thank you!", LARGE_FONT_SIZE);
+        raylib.drawText("Thank you!", @divTrunc((screen_width - thank_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
+        const score_str = std.fmt.allocPrintZ(std.heap.page_allocator, "Score: {}/10", .{state.session.correct}) catch "?";
+        defer std.heap.page_allocator.free(score_str);
+        const score_width = raylib.measureText(score_str, LARGE_FONT_SIZE);
+        raylib.drawText(score_str, @divTrunc((screen_width - score_width), 2), question_y + MEDIUM_SPACING, LARGE_FONT_SIZE, state.pastel_fg);
+    } else if (state.game_state == .Submitting) {
+        const submit_width = raylib.measureText("Submit your own question!", LARGE_FONT_SIZE);
+        raylib.drawText("Submit your own question!", @divTrunc((screen_width - submit_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
+        // Center input box
+        const input_box_x = @as(f32, @floatFromInt(@divTrunc((screen_width - INPUT_BOX_WIDTH), 2)));
+        const input_box_y = @as(f32, @floatFromInt(question_y + MEDIUM_SPACING));
+        const input_box = rl.Rectangle{ .x = input_box_x, .y = input_box_y, .width = INPUT_BOX_WIDTH, .height = INPUT_BOX_HEIGHT };
+        raylib.drawRectangleLinesEx(input_box, INPUT_BORDER, state.pastel_fg);
+        const input_text = if (state.input_len > 0) @as([:0]const u8, @ptrCast(&state.input_buffer)) else "[Type your question here]";
+        raylib.drawText(input_text, @as(i32, @intFromFloat(input_box_x)) + TEXT_PADDING, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_fg);
+        if (state.input_active and (@mod(raylib.getTime() * 2.0, 2.0) < 1.0)) {
+            const cursor_x = @as(i32, @intFromFloat(input_box_x)) + TEXT_PADDING + raylib.measureText(input_text, SMALL_FONT_SIZE);
+            raylib.drawRectangle(cursor_x, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, CURSOR_WIDTH, CURSOR_HEIGHT, state.pastel_fg);
+        }
+    }
+    // Always-visible UI
+    // COLOR button in top right
+    const randomize_btn_x = @as(f32, @floatFromInt(screen_width - COLOR_BUTTON_WIDTH - MARGIN));
+    const randomize_btn_y = @as(f32, @floatFromInt(MARGIN));
+    const randomize_btn = raylib.Rectangle{ .x = randomize_btn_x, .y = randomize_btn_y, .width = COLOR_BUTTON_WIDTH, .height = COLOR_BUTTON_HEIGHT };
+    raylib.drawRectangleRec(randomize_btn, state.pastel_fg);
+    const color_text = "COLOR";
+    const color_font_size = MEDIUM_FONT_SIZE;
+    const color_text_width = raylib.measureText(color_text, color_font_size);
+    const color_text_x = @as(i32, @intFromFloat(randomize_btn_x)) + @divTrunc((COLOR_BUTTON_WIDTH - color_text_width), 2);
+    const color_text_y = @as(i32, @intFromFloat(randomize_btn_y)) + @divTrunc((COLOR_BUTTON_HEIGHT - color_font_size), 2);
+    raylib.drawText(color_text, color_text_x, color_text_y, color_font_size, state.pastel_bg);
+    // SUBMIT and ANSWER buttons in bottom right
+    const bottom_btn_y = @as(f32, @floatFromInt(screen_height - BOTTOM_BUTTON_HEIGHT - MARGIN));
+    const answer_btn_x = @as(f32, @floatFromInt(screen_width - BOTTOM_BUTTON_WIDTH - MARGIN));
+    const submit_btn_x = answer_btn_x - BOTTOM_BUTTON_WIDTH - BOTTOM_BUTTON_GAP;
+    raylib.drawRectangleRec(rl.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.pastel_fg);
+    raylib.drawText("SUBMIT", @as(i32, @intFromFloat(submit_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_bg);
+    raylib.drawRectangleRec(rl.Rectangle{ .x = answer_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.pastel_fg);
+    raylib.drawText("ANSWER", @as(i32, @intFromFloat(answer_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_bg);
+
+    if (state.user_trust >= 0.85 and state.game_state == .Answering) {
+        for (state.session.questions[state.session.current].tags) |tag| {
+            _ = tag;
+            // Optionally draw tags
+        }
+    }
+}
+
+pub export fn reload(state: *GameState) callconv(.C) void {
+    _ = state;
+}
+
+pub export fn stateSize() callconv(.C) usize {
+    return @sizeOf(GameState);
+}
