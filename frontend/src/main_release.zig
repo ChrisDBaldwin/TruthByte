@@ -3,18 +3,21 @@ const std = @import("std");
 const game = @import("game.zig");
 
 pub fn main() !void {
-    rl.setConfigFlags(.{ .FLAG_FULLSCREEN_MODE = true });
-    rl.initWindow(0, 0, "TruthByte");
+    rl.setConfigFlags(.{ .fullscreen_mode = true });
+    const size = game.get_canvas_size();
+    rl.initWindow(size.w, size.h, "TruthByte");
+    std.debug.print("Screen resolution (from canvas): {}x{}\n", .{ size.w, size.h });
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
     // Confirm rendering resolution
-    const screen_width = rl.getScreenWidth();
-    const screen_height = rl.getScreenHeight();
+    const screen_width = game.get_canvas_size().w;
+    const screen_height = game.get_canvas_size().h;
     std.debug.print("Screen resolution: {}x{}\n", .{ screen_width, screen_height });
 
     var allocator = std.heap.c_allocator;
-    const state: *game.GameState = @ptrCast(@alignCast(game.init(&allocator)));
+    const raw = game.init(&allocator);
+    const state: *game.GameState = @ptrCast(@alignCast(raw));
 
     while (!rl.windowShouldClose()) {
         game.update(state);

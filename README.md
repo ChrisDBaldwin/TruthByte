@@ -86,4 +86,11 @@ User → Frontend (WASM) → GET /questions
 ```
 
 ## Repo Template
+
 I am using a template from https://github.com/Lommix/zig-raylib-wasm-hot-template for zig + raylib + wasm
+
+
+## Data
+
+Questions were sourced from BoolQ's Dataset (thanks Amol & Kenton)
+https://github.com/google-research-datasets/boolean-questions

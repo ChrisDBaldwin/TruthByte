@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const builtin = @import("builtin");
 
 // --- Layout Constants ---
 const MARGIN = 24;
@@ -66,10 +67,12 @@ const UserSessionResponse = struct {
 const GameStateEnum = enum { Answering, Submitting, Finished };
 
 const Question = struct {
-    id: [:0]const u8,
-    text: [:0]const u8,
-    answer: bool,
-    tags: []const []const u8 = &.{},
+    id: [:0]const u8, // Unique identifier
+    tags: []const []const u8 = &.{}, // Tags/categories
+    question: [:0]const u8, // The main question text
+    title: [:0]const u8 = "", // Short label/headline (optional)
+    passage: [:0]const u8 = "", // Supporting passage (optional)
+    answer: bool, // True/False answer
 };
 
 const Session = struct {
@@ -80,23 +83,23 @@ const Session = struct {
 };
 
 const question_pool = [_]Question{
-    Question{ .id = "q001", .text = "Pizza is a vegetable?", .answer = false, .tags = &.{ "food", "meme" } },
-    Question{ .id = "q002", .text = "The sky is blue?", .answer = true, .tags = &.{ "science", "nature" } },
-    Question{ .id = "q003", .text = "2+2=5?", .answer = false, .tags = &.{"math"} },
-    Question{ .id = "q004", .text = "Water boils at 100C?", .answer = true, .tags = &.{ "science", "physics" } },
-    Question{ .id = "q005", .text = "Cats can fly?", .answer = false, .tags = &.{ "animals", "meme" } },
-    Question{ .id = "q006", .text = "Earth is round?", .answer = true, .tags = &.{ "science", "geography" } },
-    Question{ .id = "q007", .text = "Fire is cold?", .answer = false, .tags = &.{"science"} },
-    Question{ .id = "q008", .text = "Fish can swim?", .answer = true, .tags = &.{"animals"} },
-    Question{ .id = "q009", .text = "Birds are mammals?", .answer = false, .tags = &.{ "animals", "biology" } },
-    Question{ .id = "q010", .text = "Sun rises in the east?", .answer = true, .tags = &.{ "science", "geography" } },
+    Question{ .id = "q001", .tags = &.{ "food", "meme" }, .question = "Pizza is a vegetable?", .title = "Pizza Fact", .passage = "Some US lawmakers once argued that pizza counts as a vegetable in school lunches.", .answer = false },
+    Question{ .id = "q002", .tags = &.{ "science", "nature" }, .question = "The sky is blue?", .title = "Sky Color", .passage = "", .answer = true },
+    Question{ .id = "q003", .tags = &.{"math"}, .question = "2+2=5?", .title = "Math Check", .passage = "", .answer = false },
+    Question{ .id = "q004", .tags = &.{ "science", "physics" }, .question = "Water boils at 100C?", .title = "Boiling Point", .passage = "", .answer = true },
+    Question{ .id = "q005", .tags = &.{ "animals", "meme" }, .question = "Cats can fly?", .title = "Cat Fact", .passage = "", .answer = false },
+    Question{ .id = "q006", .tags = &.{ "science", "geography" }, .question = "Earth is round?", .title = "Earth Shape", .passage = "", .answer = true },
+    Question{ .id = "q007", .tags = &.{"science"}, .question = "Fire is cold?", .title = "Fire Fact", .passage = "", .answer = false },
+    Question{ .id = "q008", .tags = &.{"animals"}, .question = "Fish can swim?", .title = "Fish Fact", .passage = "", .answer = true },
+    Question{ .id = "q009", .tags = &.{ "animals", "biology" }, .question = "Birds are mammals?", .title = "Bird Fact", .passage = "", .answer = false },
+    Question{ .id = "q010", .tags = &.{ "science", "geography" }, .question = "Sun rises in the east?", .title = "Sunrise", .passage = "", .answer = true },
 };
 
 pub const GameState = struct {
     // Palette and color state
     palettes: [NUM_PALETTES]Palette = undefined,
-    pastel_bg: rl.Color = rl.Color{ .r = 200, .g = 215, .b = 235, .a = 255 },
-    pastel_fg: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
+    bg_color: rl.Color = rl.Color{ .r = 200, .g = 215, .b = 235, .a = 255 },
+    fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
     game_state: GameStateEnum = .Answering,
     session: Session = undefined,
@@ -115,20 +118,90 @@ pub const GameState = struct {
     selected: ?bool = null,
     // PRNG
     prng: std.Random.DefaultPrng = undefined,
+    last_screen_width: i32 = 0,
+    last_screen_height: i32 = 0,
 };
 
 // --- Helper functions and JS interop ---
+/// Only declare these for WASM targets (e.g., wasm32-freestanding or emscripten)
+pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) struct {
+    extern fn get_session_id() *const u8;
+    extern fn get_session_id_len() usize;
+    extern fn get_token() *const u8;
+    extern fn get_token_len() usize;
+    extern fn get_canvas_width() i32;
+    extern fn get_canvas_height() i32;
 
-// extern fn js_get_token() callconv(.C) [*]const u8;
-// extern fn js_get_token_len() usize;
-// extern fn js_get_session_id() callconv(.C) [*]const u8;
-// extern fn js_get_session_id_len() usize;
-// extern fn js_set_invited_shown(val: bool) void;
-// extern fn js_get_invited_shown() bool;
+    extern fn set_invited_shown(val: bool) void;
+    pub export fn alloc(size: usize) *u8 {
+        return @ptrCast(std.heap.page_allocator.alloc(u8, size) catch unreachable);
+    }
 
-// pub export fn alloc(size: usize) ?[*]u8 {
-//     return std.heap.page_allocator.alloc(u8, size);
-// }
+    /// Local helper so rest of Zig can use slices
+    pub fn get_session_id_slice() []const u8 {
+        const ptr = get_session_id();
+        const len = get_session_id_len();
+        // Properly cast single pointer to many-item pointer
+        return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+
+    pub fn get_token_slice() []const u8 {
+        const ptr = get_token();
+        const len = get_token_len();
+        // Properly cast single pointer to many-item pointer
+        return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+} else struct {
+    // Provide stubs for native builds
+    pub fn get_session_id() *const u8 {
+        std.debug.print("get_session_id is not available in native build\n", .{});
+        return "1234567890".ptr;
+    }
+
+    pub fn get_session_id_len() usize {
+        std.debug.print("get_session_id_len is not available in native build\n", .{});
+        return 10;
+    }
+
+    pub fn get_token() *const u8 {
+        std.debug.print("get_token is not available in native build\n", .{});
+        return "123".ptr;
+    }
+
+    pub fn get_token_len() usize {
+        std.debug.print("get_token_len is not available in native build\n", .{});
+        return 3;
+    }
+
+    pub fn set_invited_shown(val: bool) void {
+        // no-op or panic
+        _ = val;
+        std.debug.print("set_invited_shown is not available in native build\n", .{});
+    }
+
+    pub fn get_canvas_width() i32 {
+        return rl.getScreenWidth();
+    }
+
+    pub fn get_canvas_height() i32 {
+        return rl.getScreenHeight();
+    }
+
+    /// Local helper so rest of Zig can use slices
+    pub fn get_session_id_slice() []const u8 {
+        const ptr = get_session_id();
+        const len = get_session_id_len();
+        // Properly cast single pointer to many-item pointer
+        return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+
+    pub fn get_token_slice() []const u8 {
+        const ptr = get_token();
+        const len = get_token_len();
+        // Properly cast single pointer to many-item pointer
+        return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+};
 
 fn hslToRgb(h: f32, s: f32, l: f32) rl.Color {
     const c = (1 - @abs(2 * l - 1)) * s;
@@ -194,13 +267,12 @@ fn startSession(state: *GameState) void {
         .correct = 0,
         .finished = false,
     };
-    // const id_ptr = js_get_session_id();
-    // const id_len = js_get_session_id_len();
-    // const token_ptr = js_get_token();
-    // const token_len = js_get_token_len();
-    // state.user_session.timestamp = std.time.timestamp();
-    // state.user_session.session_id = id_ptr[0..id_len];
-    // state.user_session.token = token_ptr[0..token_len];
+    state.user_session.timestamp = std.time.timestamp();
+    // Temporarily disable JS interop to test alignment issue
+    // state.user_session.session_id = js.get_session_id_slice();
+    // state.user_session.token = js.get_token_slice();
+    state.user_session.session_id = "dummy-session";
+    state.user_session.token = "dummy-token";
     state.user_session.trust = state.user_trust;
     state.user_session.invitable = false;
     var i: usize = 0;
@@ -213,7 +285,7 @@ fn startSession(state: *GameState) void {
         };
     }
     state.game_state = .Answering;
-    // state.invited_shown = js_get_invited_shown();
+    // state.invited_shown = get_invited_shown();
 }
 
 fn currentResponse(state: *GameState) *QuestionResponse {
@@ -229,7 +301,29 @@ fn showInviteModal() void {
 }
 
 fn submitResponseBatch(user_session_response: *UserSessionResponse) void {
-    std.debug.print("Submitting session: {any}\n", .{user_session_response});
+    user_session_response.session_id = js.get_session_id_slice();
+    user_session_response.token = js.get_token_slice();
+    user_session_response.trust = user_session_response.trust;
+    user_session_response.invitable = false; // TODO: implement
+    user_session_response.responses = user_session_response.responses;
+    user_session_response.timestamp = std.time.timestamp();
+
+    std.debug.print("Submitting session: session_id: {s}\n token: {s}\n timestamp: {d}\n responses: {any}\n trust: {d}\n invitable: {}\n", .{
+        user_session_response.session_id,
+        user_session_response.token,
+        user_session_response.timestamp,
+        user_session_response.responses,
+        user_session_response.trust,
+        user_session_response.invitable,
+    });
+}
+
+pub fn get_canvas_size() struct { w: i32, h: i32 } {
+    if (builtin.target.os.tag == .emscripten) {
+        return .{ .w = js.get_canvas_width(), .h = js.get_canvas_height() };
+    } else {
+        return .{ .w = rl.getScreenWidth(), .h = rl.getScreenHeight() };
+    }
 }
 
 // --- Exported API ---
@@ -239,15 +333,16 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
     initPalettes(state);
     state.prng = std.Random.DefaultPrng.init(@as(u64, @intCast(std.time.timestamp())));
     const pal = randomPalette(state);
-    state.pastel_bg = pal.bg;
-    state.pastel_fg = pal.fg;
+    state.bg_color = pal.bg;
+    state.fg_color = pal.fg;
     startSession(state);
     state.input_active = false;
     state.input_len = 0;
     state.input_buffer[0] = 0;
     state.response = QuestionResponse{ .question_id = "q001", .answer = null };
     state.selected = null;
-    return state;
+    // Ensure proper alignment when returning
+    return @ptrCast(@alignCast(state));
 }
 
 pub export fn deinit(allocator: *std.mem.Allocator, state: *GameState) callconv(.C) void {
@@ -256,8 +351,16 @@ pub export fn deinit(allocator: *std.mem.Allocator, state: *GameState) callconv(
 
 pub export fn update(state: *GameState) callconv(.C) void {
     const raylib = rl;
-    const screen_width = rl.getScreenWidth();
-    const screen_height = rl.getScreenHeight();
+    const size = get_canvas_size();
+    const screen_width = size.w;
+    const screen_height = size.h;
+
+    // Update Raylib's render size if the canvas size changed
+    if (state.last_screen_width != screen_width or state.last_screen_height != screen_height) {
+        raylib.setWindowSize(screen_width, screen_height);
+        state.last_screen_width = screen_width;
+        state.last_screen_height = screen_height;
+    }
 
     // Calculate vertical center and spacing for main UI
     const ui_block_height = MEDIUM_FONT_SIZE + SMALL_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING + button_h + ELEMENT_SPACING + confirm_h; // Total height of UI elements
@@ -324,15 +427,16 @@ pub export fn update(state: *GameState) callconv(.C) void {
                 if (state.user_session.trust >= 0.85 and !state.invited_shown) {
                     showInviteModal();
                     state.invited_shown = true;
-                    // js_set_invited_shown(true);
+                    // Temporarily disable JS interop to test alignment issue
+                    // js.set_invited_shown(true);
                 }
             }
             state.response.answer = null;
             state.selected = null;
         } else if (raylib.checkCollisionPointRec(mouse, randomize_btn)) {
             const new_pal = randomPalette(state);
-            state.pastel_bg = new_pal.bg;
-            state.pastel_fg = new_pal.fg;
+            state.bg_color = new_pal.bg;
+            state.fg_color = new_pal.fg;
         }
     }
     // Handle text input if input_active
@@ -359,9 +463,10 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     const raylib = rl;
     raylib.beginDrawing();
     defer raylib.endDrawing();
-    raylib.clearBackground(state.pastel_bg);
-    const screen_width = raylib.getScreenWidth();
-    const screen_height = raylib.getScreenHeight();
+    raylib.clearBackground(state.bg_color);
+    const size = get_canvas_size();
+    const screen_width = size.w;
+    const screen_height = size.h;
 
     // Calculate vertical center and spacing for main UI (same as update)
     const ui_block_height = MEDIUM_FONT_SIZE + SMALL_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING + button_h + ELEMENT_SPACING + confirm_h;
@@ -373,23 +478,24 @@ pub export fn draw(state: *GameState) callconv(.C) void {
 
     if (state.game_state == .Answering) {
         const qnum = state.session.current + 1;
-        const qstr = std.fmt.allocPrintZ(std.heap.page_allocator, "{}/10", .{qnum}) catch "?";
-        defer std.heap.page_allocator.free(qstr);
+        // Use a simpler approach to avoid WASM memory issues
+        var qstr_buf: [32]u8 = undefined;
+        const qstr = std.fmt.bufPrintZ(&qstr_buf, "Question: {}", .{qnum}) catch "Question: ?";
         const qstr_width = raylib.measureText(qstr, MEDIUM_FONT_SIZE);
-        raylib.drawText(qstr, @divTrunc((screen_width - qstr_width), 2), progress_y, MEDIUM_FONT_SIZE, state.pastel_fg);
+        raylib.drawText(qstr, @divTrunc((screen_width - qstr_width), 2), progress_y, MEDIUM_FONT_SIZE, state.fg_color);
 
         // Center question text
-        const question = state.session.questions[state.session.current].text;
+        const question = state.session.questions[state.session.current].question;
         const question_width = raylib.measureText(question, LARGE_FONT_SIZE);
-        raylib.drawText(question, @divTrunc((screen_width - question_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
+        raylib.drawText(question, @divTrunc((screen_width - question_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
 
         // Center TRUE/FALSE buttons horizontally
         const total_button_width = button_w * 2 + BUTTON_GAP;
         const buttons_x = @as(f32, @floatFromInt(@divTrunc((screen_width - total_button_width), 2)));
-        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == true) THICK_BORDER else THIN_BORDER, if (state.selected == true) accent else state.pastel_fg);
-        raylib.drawText("TRUE", @as(i32, @intFromFloat(buttons_x)) + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.pastel_fg);
-        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x + button_w + BUTTON_GAP, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == false) THICK_BORDER else THIN_BORDER, if (state.selected == false) accent else state.pastel_fg);
-        raylib.drawText("FALSE", @as(i32, @intFromFloat(buttons_x)) + @as(i32, @intFromFloat(button_w)) + BUTTON_GAP + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.pastel_fg);
+        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == true) THICK_BORDER else THIN_BORDER, if (state.selected == true) accent else state.fg_color);
+        raylib.drawText("TRUE", @as(i32, @intFromFloat(buttons_x)) + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.fg_color);
+        raylib.drawRectangleLinesEx(raylib.Rectangle{ .x = buttons_x + button_w + BUTTON_GAP, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h }, if (state.selected == false) THICK_BORDER else THIN_BORDER, if (state.selected == false) accent else state.fg_color);
+        raylib.drawText("FALSE", @as(i32, @intFromFloat(buttons_x)) + @as(i32, @intFromFloat(button_w)) + BUTTON_GAP + BUTTON_TEXT_OFFSET_X, buttons_y + BUTTON_TEXT_OFFSET_Y, LARGE_FONT_SIZE, state.fg_color);
 
         // Center confirm button
         const confirm_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
@@ -398,24 +504,25 @@ pub export fn draw(state: *GameState) callconv(.C) void {
         raylib.drawText("CONFIRM", @as(i32, @intFromFloat(confirm_x)) + CONFIRM_TEXT_OFFSET_X, confirm_button_y + CONFIRM_TEXT_OFFSET_Y, MEDIUM_FONT_SIZE, .white);
     } else if (state.game_state == .Finished) {
         const thank_width = raylib.measureText("Thank you!", LARGE_FONT_SIZE);
-        raylib.drawText("Thank you!", @divTrunc((screen_width - thank_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
-        const score_str = std.fmt.allocPrintZ(std.heap.page_allocator, "Score: {}/10", .{state.session.correct}) catch "?";
-        defer std.heap.page_allocator.free(score_str);
+        raylib.drawText("Thank you!", @divTrunc((screen_width - thank_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
+        // Use a simpler approach to avoid WASM memory issues
+        var score_buf: [32]u8 = undefined;
+        const score_str = std.fmt.bufPrintZ(&score_buf, "Score: {}/10", .{state.session.correct}) catch "Score: ?";
         const score_width = raylib.measureText(score_str, LARGE_FONT_SIZE);
-        raylib.drawText(score_str, @divTrunc((screen_width - score_width), 2), question_y + MEDIUM_SPACING, LARGE_FONT_SIZE, state.pastel_fg);
+        raylib.drawText(score_str, @divTrunc((screen_width - score_width), 2), question_y + MEDIUM_SPACING, LARGE_FONT_SIZE, state.fg_color);
     } else if (state.game_state == .Submitting) {
         const submit_width = raylib.measureText("Submit your own question!", LARGE_FONT_SIZE);
-        raylib.drawText("Submit your own question!", @divTrunc((screen_width - submit_width), 2), question_y, LARGE_FONT_SIZE, state.pastel_fg);
+        raylib.drawText("Submit your own question!", @divTrunc((screen_width - submit_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
         // Center input box
         const input_box_x = @as(f32, @floatFromInt(@divTrunc((screen_width - INPUT_BOX_WIDTH), 2)));
         const input_box_y = @as(f32, @floatFromInt(question_y + MEDIUM_SPACING));
         const input_box = rl.Rectangle{ .x = input_box_x, .y = input_box_y, .width = INPUT_BOX_WIDTH, .height = INPUT_BOX_HEIGHT };
-        raylib.drawRectangleLinesEx(input_box, INPUT_BORDER, state.pastel_fg);
+        raylib.drawRectangleLinesEx(input_box, INPUT_BORDER, state.fg_color);
         const input_text = if (state.input_len > 0) @as([:0]const u8, @ptrCast(&state.input_buffer)) else "[Type your question here]";
-        raylib.drawText(input_text, @as(i32, @intFromFloat(input_box_x)) + TEXT_PADDING, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_fg);
+        raylib.drawText(input_text, @as(i32, @intFromFloat(input_box_x)) + TEXT_PADDING, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.fg_color);
         if (state.input_active and (@mod(raylib.getTime() * 2.0, 2.0) < 1.0)) {
             const cursor_x = @as(i32, @intFromFloat(input_box_x)) + TEXT_PADDING + raylib.measureText(input_text, SMALL_FONT_SIZE);
-            raylib.drawRectangle(cursor_x, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, CURSOR_WIDTH, CURSOR_HEIGHT, state.pastel_fg);
+            raylib.drawRectangle(cursor_x, @as(i32, @intFromFloat(input_box_y)) + TEXT_PADDING, CURSOR_WIDTH, CURSOR_HEIGHT, state.fg_color);
         }
     }
     // Always-visible UI
@@ -423,21 +530,21 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     const randomize_btn_x = @as(f32, @floatFromInt(screen_width - COLOR_BUTTON_WIDTH - MARGIN));
     const randomize_btn_y = @as(f32, @floatFromInt(MARGIN));
     const randomize_btn = raylib.Rectangle{ .x = randomize_btn_x, .y = randomize_btn_y, .width = COLOR_BUTTON_WIDTH, .height = COLOR_BUTTON_HEIGHT };
-    raylib.drawRectangleRec(randomize_btn, state.pastel_fg);
+    raylib.drawRectangleRec(randomize_btn, state.fg_color);
     const color_text = "COLOR";
     const color_font_size = MEDIUM_FONT_SIZE;
     const color_text_width = raylib.measureText(color_text, color_font_size);
     const color_text_x = @as(i32, @intFromFloat(randomize_btn_x)) + @divTrunc((COLOR_BUTTON_WIDTH - color_text_width), 2);
     const color_text_y = @as(i32, @intFromFloat(randomize_btn_y)) + @divTrunc((COLOR_BUTTON_HEIGHT - color_font_size), 2);
-    raylib.drawText(color_text, color_text_x, color_text_y, color_font_size, state.pastel_bg);
+    raylib.drawText(color_text, color_text_x, color_text_y, color_font_size, state.bg_color);
     // SUBMIT and ANSWER buttons in bottom right
     const bottom_btn_y = @as(f32, @floatFromInt(screen_height - BOTTOM_BUTTON_HEIGHT - MARGIN));
     const answer_btn_x = @as(f32, @floatFromInt(screen_width - BOTTOM_BUTTON_WIDTH - MARGIN));
     const submit_btn_x = answer_btn_x - BOTTOM_BUTTON_WIDTH - BOTTOM_BUTTON_GAP;
-    raylib.drawRectangleRec(rl.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.pastel_fg);
-    raylib.drawText("SUBMIT", @as(i32, @intFromFloat(submit_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_bg);
-    raylib.drawRectangleRec(rl.Rectangle{ .x = answer_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.pastel_fg);
-    raylib.drawText("ANSWER", @as(i32, @intFromFloat(answer_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.pastel_bg);
+    raylib.drawRectangleRec(rl.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.fg_color);
+    raylib.drawText("SUBMIT", @as(i32, @intFromFloat(submit_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.bg_color);
+    raylib.drawRectangleRec(rl.Rectangle{ .x = answer_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.fg_color);
+    raylib.drawText("ANSWER", @as(i32, @intFromFloat(answer_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.bg_color);
 
     if (state.user_trust >= 0.85 and state.game_state == .Answering) {
         for (state.session.questions[state.session.current].tags) |tag| {

@@ -13,6 +13,20 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const is_wasm = target.result.cpu.arch.isWasm();
+
+    if (is_wasm and b.sysroot == null) {
+        //const emsdk_dep = b.dependency("emsdk", .{}); // TODO: this is not working, come back to this later
+        //b.sysroot = emsdk_dep.path("upstream/emscripten").getPath(b);
+        const emsdk_root = std.process.getEnvVarOwned(b.allocator, "EMSDK") catch null;
+        if (emsdk_root) |p| {
+            b.sysroot = try std.fs.path.join(b.allocator, &.{ p, "upstream", "emscripten" });
+        } else {
+            std.debug.print("error: EMSDK not set and no sysroot specified.\n", .{});
+            return error.MissingEmscripten;
+        }
+    }
+
     const raylib_dep = b.dependency("raylib_zig", .{
         .target = target,
         .optimize = optimize,
@@ -33,10 +47,7 @@ pub fn build(b: *std.Build) !void {
 
     try build_hot(b, context);
 
-    if (target.result.cpu.arch.isWasm()) {
-        const emsdk = b.dependency("emsdk", .{});
-        const emsdk_incl_path = emsdk.path("upstream/emscripten").getPath(b);
-        b.sysroot = emsdk_incl_path;
+    if (is_wasm) {
         try build_web(b, context);
     } else {
         try build_native(b, context);
@@ -75,6 +86,7 @@ fn build_web(
     ctx: Context,
 ) !void {
     const exe_lib = try rlz.emcc.compileForEmscripten(b, "game", "src/main_release.zig", ctx.target, ctx.optimize);
+    exe_lib.root_module.link_libc = true;
     exe_lib.linkLibrary(ctx.raylib_artifact);
     exe_lib.root_module.addImport("raylib", ctx.raylib);
     exe_lib.root_module.addImport("raygui", ctx.raygui);
@@ -89,6 +101,9 @@ fn build_web(
 
     link_step.addArg("--shell-file");
     link_step.addArg("shell.html");
+    link_step.addArg("-sERROR_ON_UNDEFINED_SYMBOLS=0");
+    link_step.addArg("--js-library");
+    link_step.addArg("truthbyte_bindings.js");
 
     b.getInstallStep().dependOn(&link_step.step);
     const run_step = try rlz.emcc.emscriptenRunStep(b);

@@ -4,10 +4,10 @@
     .fingerprint = 0xbcd5f4a2b83f1454, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
-        .emsdk = .{
-            .url = "git+https://github.com/emscripten-core/emsdk#4.0.3",
-            .hash = "N-V-__8AAOG3BQCJ9cn-N2swm2o5cLmDhmdHmtwNngOChK78",
-        },
+        // .emsdk = .{
+        //     .url = "git+https://github.com/emscripten-core/emsdk#4.0.3",
+        //     .hash = "N-V-__8AAOG3BQCJ9cn-N2swm2o5cLmDhmdHmtwNngOChK78",
+        // },
         .raylib_zig = .{
             .url = "git+https://github.com/Not-Nik/raylib-zig?ref=devel#3bf08a304cfe2baf839705063ff999b8d8bc8c54",
             .hash = "raylib_zig-5.6.0-dev-KE8REKAqBQAQugfCOjYYVRFOi7iaEJK1EMDcRUq8AOm2",

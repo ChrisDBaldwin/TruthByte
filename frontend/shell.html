@@ -1,5 +1,21 @@
 <!doctype html>
 <html>
+    <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          background: black;
+          height: 100%;
+        }
+      
+        canvas {
+          display: block;
+          width: 100vw;
+          height: 100vh;
+        }
+    </style>
+      
     <head>
         <meta charset="utf-8" />
         <meta
@@ -24,43 +40,34 @@
     </head>
 
     <body>
-        <!-- Create the canvas that the C++ code will draw into -->
+        <!-- Create the canvas that the Zig code will draw into -->
         <canvas
             id="canvas"
             oncontextmenu="event.preventDefault()"
+            tabindex="1"
         ></canvas>
 
-        <!-- Allow the C++ to access the canvas element -->
+        <!-- Allow Zig to access the canvas element and session/token functions -->
         <script type="text/javascript">
             var Module = {
                 canvas: (function () {
                     return document.getElementById("canvas");
-                })(),
+                })()
             };
         </script>
 
+        <!-- Emscripten will inject its loader here -->
+        {{{ SCRIPT }}}
+
         <script>
-            // Modern WASM loader with JS interop
-            fetch('truthbyte.wasm').then(response =>
-                response.arrayBuffer()
-            ).then(bytes =>
-                WebAssembly.instantiate(bytes, {
-                    env: {
-                        // js_get_token: () => 0, // stub
-                        // js_get_token_len: () => 0,
-                        // js_get_session_id: () => 0,
-                        // js_get_session_id_len: () => 0,
-                        // js_set_invited_shown: (val) => console.log("invited:", !!val),
-                        // js_get_invited_shown: () => 1,
-                        // Add any other imports needed by your Zig code
-                    }
-                })
-            ).then(results => {
-                const instance = results.instance;
-                // If your WASM expects to draw to a canvas, you may need to pass the canvas or set up context here
-                // For raylib-zig, this is usually handled internally
-                console.log("WASM loaded", instance);
-            });
+        function resizeCanvas() {
+            var canvas = document.getElementById("canvas");
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('load', resizeCanvas);
+        resizeCanvas();
         </script>
     </body>
 </html>
