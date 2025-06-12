@@ -2,6 +2,72 @@
 
 A minimal Zig+WASM game that crowdsources human truth judgments to build better LLM evaluation datasets. Play a fast round of "True or False?" — every answer trains the future.
 
+## Development Setup
+
+### Prerequisites
+
+- Zig (latest, or 0.14.0+)
+- Python 3.13.5+ (for backend)
+- Emscripten SDK (EMSDK) for WASM compilation
+
+### EMSDK Setup
+
+1. Clone the Emscripten SDK:
+```bash
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+```
+
+2. Install and activate the latest version:
+```bash
+# Windows
+./emsdk.bat install latest
+./emsdk.bat activate latest
+
+# Unix/macOS
+./emsdk install latest
+./emsdk activate latest
+```
+
+3. Set the EMSDK environment variable:
+```bash
+# Windows PowerShell
+$env:EMSDK="path/to/your/emsdk"  # e.g., "C:\code\git\emsdk"
+
+# Windows CMD
+set EMSDK=path/to/your/emsdk
+
+# Unix/macOS
+export EMSDK=/path/to/your/emsdk
+```
+
+### Permanent Environment Setup
+
+#### Windows
+1. Open System Properties (Win + Break)
+2. Click "Environment Variables"
+3. Under "System Variables", click "New"
+4. Variable name: `EMSDK`
+5. Variable value: Your EMSDK path (e.g., `C:\path\to\emsdk`)
+
+#### macOS/Linux
+Add to your shell's startup file (`~/.bashrc`, `~/.zshrc`, etc.):
+```bash
+export EMSDK=/path/to/your/emsdk
+export PATH=$EMSDK:$PATH
+```
+
+### Verifying Setup
+To verify your EMSDK setup:
+```bash
+# Should print your EMSDK path
+echo %EMSDK%  # Windows CMD
+echo $EMSDK   # PowerShell/Unix
+
+# Should show emcc version
+emcc --version
+```
+
 ## Proof of Concept
 
 ### Core Assumptions
@@ -22,11 +88,11 @@ A minimal Zig+WASM game that crowdsources human truth judgments to build better 
 - User session tracking is planned (currently commented out)
 - Optional "Submit your own question" flow is planned
 
-🟡 **Backend (Zig) — In Progress**
+🟡 **Backend (Python) — In Progress**
 
 - Project initialized (`zig init`), but endpoints are not yet implemented
 - Will provide:
-  - `GET /questions` → returns a randomized batch of questions, optionally filtered by tags
+  - `GET /fetch-questions` → returns a randomized batch of questions, optionally filtered by tags
   - `POST /answers` → receives user answers + timing, computes trust score, and sends telemetry data
   - `POST /submit-question` → saves user-submitted questions to a pending pool
   - `POST /suggest-tags` and `POST /remove-tags` → endpoints for suggesting tag additions/removals (planned)
