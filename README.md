@@ -2,7 +2,99 @@
 
 A minimal Zig+WASM game that crowdsources human truth judgments to build better LLM evaluation datasets. Play a fast round of "True or False?" — every answer trains the future.
 
-## Development Setup
+## Table of Contents
+- [Quick Start](#quick-start)
+- [Project Overview](#project-overview)
+  - [Core Assumptions](#core-assumptions)
+  - [System Components](#system-components)
+  - [Data Flow](#data-flow)
+- [Development Guide](#development-guide)
+  - [Prerequisites](#prerequisites)
+  - [Environment Setup](#environment-setup)
+    - [EMSDK Installation](#emsdk-installation)
+    - [Environment Variables](#environment-variables)
+  - [Building and Running](#building-and-running)
+- [Data Structures](#data-structures)
+  - [Questions](#questions)
+  - [User Submission](#user-submission)
+  - [User Question Submission](#user-question-submission)
+- [Technical Details](#technical-details)
+  - [Repo Template](#repo-template)
+  - [Data Sources](#data-sources)
+
+## Quick Start
+
+1. **Clone and Setup**:
+```bash
+git clone https://github.com/yourusername/truthbyte.git
+cd truthbyte
+```
+
+2. **Install Prerequisites**:
+- Zig (0.14.0+)
+- Python 3.13.5+
+- EMSDK (for WASM)
+
+3. **Set EMSDK**:
+```bash
+# Windows PowerShell
+$env:EMSDK="C:\path\to\emsdk"
+
+# Unix/macOS
+export EMSDK=/path/to/emsdk
+```
+
+4. **Run Frontend**:
+```bash
+cd frontend
+zig build -Dtarget=wasm32-emscripten run
+```
+
+For detailed setup instructions, see the [Development Guide](#development-guide).
+
+## Project Overview
+
+### Core Assumptions
+
+- All questions have a canonical "true" answer known to the system
+- Users answer batches of questions (maybe 5–10)
+- Each session is tagged with simple metadata (IP hash, timestamp, optional fingerprint)
+- A User's trust score is calculated but doesn't block interaction yet
+- Users can optionally submit questions for potential inclusion
+
+### System Components
+
+🟢 **Frontend (WASM/Zig) — Working**
+- Compiles to WASM and renders the quiz UI in the browser
+- Loads questions, displays passages, and tracks response times per question
+- Makes API calls to the backend for fetching questions and submitting answers
+- User session tracking is planned (currently commented out)
+- Optional "Submit your own question" flow is planned
+
+🟡 **Backend (Python) — In Progress**
+- Project initialized, endpoints pending implementation
+- Provides:
+  - `GET /fetch-questions` → returns a randomized batch of questions, optionally filtered by tags
+  - `POST /answers` → receives user answers + timing, computes trust score
+  - `POST /submit-question` → saves user-submitted questions to a pending pool
+  - `POST /suggest-tags` and `POST /remove-tags` → tag management endpoints (planned)
+- Will integrate OpenTelemetry and support S3/DynamoDB/JSON storage
+
+🟠 **Admin (Manual Review) — Manual Process**
+- No moderation dashboard yet
+- Manual question promotion/rejection process
+- Tag management through backend endpoints or direct data file edits
+
+### Data Flow
+
+```
+User → Frontend (WASM) → GET /questions
+                           ↑
+     ↓ answers w/ timing  → POST /answers
+     ↓ new question       → POST /submit-question
+```
+
+## Development Guide
 
 ### Prerequisites
 
@@ -10,7 +102,9 @@ A minimal Zig+WASM game that crowdsources human truth judgments to build better 
 - Python 3.13.5+ (for backend)
 - Emscripten SDK (EMSDK) for WASM compilation
 
-### EMSDK Setup
+### Environment Setup
+
+#### EMSDK Installation
 
 1. Clone the Emscripten SDK:
 ```bash
@@ -29,7 +123,9 @@ cd emsdk
 ./emsdk activate latest
 ```
 
-3. Set the EMSDK environment variable:
+#### Environment Variables
+
+1. **Temporary Setup**:
 ```bash
 # Windows PowerShell
 $env:EMSDK="path/to/your/emsdk"  # e.g., "C:\code\git\emsdk"
@@ -41,24 +137,23 @@ set EMSDK=path/to/your/emsdk
 export EMSDK=/path/to/your/emsdk
 ```
 
-### Permanent Environment Setup
+2. **Permanent Setup**:
 
-#### Windows
+Windows:
 1. Open System Properties (Win + Break)
 2. Click "Environment Variables"
 3. Under "System Variables", click "New"
 4. Variable name: `EMSDK`
 5. Variable value: Your EMSDK path (e.g., `C:\path\to\emsdk`)
 
-#### macOS/Linux
+macOS/Linux:
 Add to your shell's startup file (`~/.bashrc`, `~/.zshrc`, etc.):
 ```bash
 export EMSDK=/path/to/your/emsdk
 export PATH=$EMSDK:$PATH
 ```
 
-### Verifying Setup
-To verify your EMSDK setup:
+3. **Verify Setup**:
 ```bash
 # Should print your EMSDK path
 echo %EMSDK%  # Windows CMD
@@ -68,61 +163,30 @@ echo $EMSDK   # PowerShell/Unix
 emcc --version
 ```
 
-## Proof of Concept
+### Building and Running
 
-### Core Assumptions
-
-- All questions have a canonical "true" answer known to the system
-- Users answer batches of questions (maybe 5–10)
-- Each session is tagged with simple metadata (IP hash, timestamp, optional fingerprint)
-- A User's trust score is calculated but doesn't block interaction yet
-- Users can optionally submit questions for potential inclusion
-
-### System Components
-
-🟢 **Frontend (WASM/Zig) — Working**
-
-- Compiles to WASM and renders the quiz UI in the browser
-- Loads questions, displays passages, and tracks response times per question
-- Makes API calls to the backend for fetching questions and submitting answers (API endpoints are stubs and pending)
-- User session tracking is planned (currently commented out)
-- Optional "Submit your own question" flow is planned
-
-🟡 **Backend (Python) — In Progress**
-
-- Project initialized (`zig init`), but endpoints are not yet implemented
-- Will provide:
-  - `GET /fetch-questions` → returns a randomized batch of questions, optionally filtered by tags
-  - `POST /answers` → receives user answers + timing, computes trust score, and sends telemetry data
-  - `POST /submit-question` → saves user-submitted questions to a pending pool
-  - `POST /suggest-tags` and `POST /remove-tags` → endpoints for suggesting tag additions/removals (planned)
-- Will integrate OpenTelemetry and support S3/DynamoDB/JSON storage (planned)
-
-🟠 **Admin (Manual Review) — Manual Process**
-
-- No moderation dashboard yet
-- To promote a question: manually move it from the pending pool to the main question set (e.g., by editing a JSON file or running a script)
-- To reject a question: manually delete or archive it from the pending pool
-- Tag suggestions and removals are handled by backend endpoints (planned), but can also be done by editing the data files directly
-
----
-
-**Legend:**
-- 🟢 Working/Implemented
-- 🟡 In Progress/Planned
-- 🟠 Manual/Requires Admin Action
-
-### Data Flow Summary
-```
-User → Frontend (WASM) → GET /questions
-                           ↑
-     ↓ answers w/ timing  → POST /answers
-     ↓ new question       → POST /submit-question
+#### Frontend (WASM)
+1. Navigate to the frontend directory:
+```bash
+cd frontend
 ```
 
-### Example Data Structures
+2. Build and run the WASM target:
+```bash
+zig build -Dtarget=wasm32-emscripten run
+```
 
-#### Questions
+This will:
+- Compile the Zig code to WebAssembly
+- Start a local development server
+- Open your default browser to the application
+- Enable hot-reloading for development
+
+If you encounter the error `EMSDK environment variable not found`, ensure you've set up the EMSDK environment variable as described above.
+
+## Data Structures
+
+### Questions
 
 ```json
 {
@@ -135,7 +199,7 @@ User → Frontend (WASM) → GET /questions
 }
 ```
 
-#### User Submission
+### User Submission
 
 ```json
 {
@@ -150,7 +214,7 @@ User → Frontend (WASM) → GET /questions
 }
 ```
 
-#### User Question Submission
+### User Question Submission
 
 ```json
 {
@@ -161,12 +225,13 @@ User → Frontend (WASM) → GET /questions
 }
 ```
 
-## Repo Template
+## Technical Details
 
-I am using a template from https://github.com/Lommix/zig-raylib-wasm-hot-template for zig + raylib + wasm
+### Repo Template
 
+This project uses a template from [zig-raylib-wasm-hot-template](https://github.com/Lommix/zig-raylib-wasm-hot-template) for zig + raylib + wasm integration.
 
-## Data
+### Data Sources
 
 Questions were sourced from BoolQ's Dataset (thanks Amol & Kenton)
 https://github.com/google-research-datasets/boolean-questions
