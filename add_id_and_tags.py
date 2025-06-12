@@ -6,19 +6,94 @@ def generate_tags(title: str, question: str, passage: str) -> List[str]:
     """Generate relevant tags based on title, question, and passage content."""
     text_content = f"{title} {question} {passage}".lower()
     
-    # Define tag categories and their keywords
+    # Define tag categories and their keywords - based on analysis of actual data
     tag_keywords = {
-        "science": ["energy", "ethanol", "fuel", "physics", "chemistry", "biology", "climate", "research"],
-        "tax": ["tax", "property", "house tax", "revenue", "government", "municipal"],
-        "medical": ["pain", "phantom", "limb", "amputation", "nerve", "sensation", "health", "body"],
-        "energy": ["ethanol", "fuel", "energy", "biomass", "fossil", "renewable"],
-        "economics": ["economic", "financial", "cost", "unit", "production", "investment"],
-        "government": ["government", "law", "policy", "regulation", "state", "federal"],
-        "agriculture": ["corn", "sugarcane", "biomass", "grow", "farming", "crop"],
-        "brazil": ["brazil", "brazilian"],
-        "property": ["property", "real estate", "building", "land", "ownership"],
-        "neurology": ["nerve", "brain", "neural", "phantom", "sensation", "neurological"],
-        "anatomy": ["limb", "body", "organ", "physical", "amputation", "paralyzed"]
+        "geography": [
+            "america", "american", "united states", "canada", "mexico", "europe", "asia",
+            "africa", "australia", "england", "france", "germany", "spain", "italy",
+            "japan", "china", "india", "brazil", "russia", "country", "countries",
+            "city", "cities", "state", "states", "north", "south", "east", "west",
+            "northern", "southern", "eastern", "western", "continent", "ocean",
+            "river", "mountain", "island", "lake", "region", "province"
+        ],
+        "politics": [
+            "government", "political", "president", "congress", "senate", "parliament",
+            "law", "laws", "legal", "court", "supreme court", "constitution", "federal",
+            "election", "vote", "democracy", "republic", "policy", "legislation",
+            "regulation", "tax", "taxation", "minister", "governor", "mayor"
+        ],
+        "military": [
+            "war", "military", "army", "navy", "air force", "battle", "conflict",
+            "soldier", "troops", "weapon", "defense", "attack", "invasion",
+            "world war", "civil war", "revolution", "peace", "treaty"
+        ],
+        "entertainment": [
+            "film", "movie", "cinema", "television", "tv", "show", "series",
+            "episode", "season", "actor", "actress", "director", "producer",
+            "character", "drama", "comedy", "documentary", "music", "song",
+            "album", "band", "singer", "musician", "concert", "performance"
+        ],
+        "literature": [
+            "book", "novel", "author", "writer", "story", "poem", "poetry",
+            "literature", "publication", "publisher", "magazine", "newspaper",
+            "journal", "article", "text", "writing", "fiction", "non-fiction"
+        ],
+        "sports": [
+            "sport", "sports", "game", "games", "team", "teams", "player", "players",
+            "football", "soccer", "basketball", "baseball", "tennis", "golf",
+            "hockey", "olympics", "championship", "tournament", "league", "cup",
+            "fifa", "match", "competition", "athlete", "coach", "stadium"
+        ],
+        "science": [
+            "science", "scientific", "research", "study", "experiment", "theory",
+            "technology", "computer", "software", "internet", "digital", "data",
+            "physics", "chemistry", "biology", "medicine", "medical", "health",
+            "space", "universe", "planet", "earth", "climate", "environment",
+            "energy", "power", "nuclear", "solar", "electric"
+        ],
+        "business": [
+            "business", "company", "corporation", "industry", "market", "economy",
+            "economic", "financial", "money", "bank", "investment", "trade",
+            "commerce", "profit", "revenue", "cost", "price", "production",
+            "manufacturing", "employment", "job", "work", "office", "service"
+        ],
+        "history": [
+            "history", "historical", "ancient", "medieval", "century", "era",
+            "period", "empire", "civilization", "culture", "tradition", "heritage",
+            "archaeology", "artifact", "monument", "museum"
+        ],
+        "education": [
+            "school", "university", "college", "education", "student", "teacher",
+            "professor", "academic", "study", "course", "class", "degree",
+            "graduation", "learning", "knowledge", "training", "instruction"
+        ],
+        "religion": [
+            "religion", "religious", "church", "christian", "islam", "muslim",
+            "jewish", "judaism", "buddhism", "buddhist", "hinduism", "hindu",
+            "god", "faith", "belief", "prayer", "worship", "philosophy",
+            "ethical", "moral", "spiritual"
+        ],
+        "food": [
+            "food", "eat", "eating", "cook", "cooking", "recipe", "restaurant",
+            "kitchen", "meal", "breakfast", "lunch", "dinner", "fruit", "vegetable",
+            "meat", "fish", "drink", "water", "coffee", "tea", "wine", "beer"
+        ],
+        "transport": [
+            "transport", "transportation", "car", "automobile", "vehicle", "truck",
+            "bus", "train", "plane", "airplane", "ship", "boat", "bicycle",
+            "road", "highway", "street", "traffic", "airport", "station", "travel"
+        ],
+        "animals": [
+            "animal", "animals", "wildlife", "nature", "natural", "wild", "forest",
+            "tree", "plant", "flower", "mammal", "bird", "fish", "insect",
+            "species", "habitat", "ecosystem", "conservation", "environment"
+        ],
+        "health": [
+            "health", "medical", "medicine", "doctor", "hospital", "patient",
+            "disease", "illness", "treatment", "therapy", "surgery", "drug",
+            "medication", "vaccine", "virus", "bacteria", "cancer", "heart",
+            "brain", "blood", "body", "physical", "mental"
+        ]
     }
     
     # Find matching tags

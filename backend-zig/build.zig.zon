@@ -65,6 +65,10 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        .aws_lambda = .{
+            .url = "git+https://github.com/by-nir/aws-lambda-zig#d1508a958040a68e2f3fd079614a4db411b1452c",
+            .hash = "aws_lambda-0.3.0-AMNpel7lAQBj9ka8XyFLXIgqIsKOTbgg9B_eF4sCeKen",
+        },
     },
 
     // Specifies the set of files and directories that are included in this package.

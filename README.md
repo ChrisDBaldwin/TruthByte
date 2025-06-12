@@ -14,29 +14,37 @@ A minimal Zig+WASM game that crowdsources human truth judgments to build better 
 
 ### System Components
 
-🔵 **Frontend (WASM/Zig)**
+🟢 **Frontend (WASM/Zig) — Working**
 
-- Renders a list of questions (statement + answer options) with associated tags for categorization (e.g., food, video games, Python, books).
+- Compiles to WASM and renders the quiz UI in the browser
+- Loads questions, displays passages, and tracks response times per question
+- Makes API calls to the backend for fetching questions and submitting answers (API endpoints are stubs and pending)
+- User session tracking is planned (currently commented out)
+- Optional "Submit your own question" flow is planned
 
-- Tracks response times per question
+🟡 **Backend (Zig) — In Progress**
 
-- Posts results back to the backend with basic metadata
+- Project initialized (`zig init`), but endpoints are not yet implemented
+- Will provide:
+  - `GET /questions` → returns a randomized batch of questions, optionally filtered by tags
+  - `POST /answers` → receives user answers + timing, computes trust score, and sends telemetry data
+  - `POST /submit-question` → saves user-submitted questions to a pending pool
+  - `POST /suggest-tags` and `POST /remove-tags` → endpoints for suggesting tag additions/removals (planned)
+- Will integrate OpenTelemetry and support S3/DynamoDB/JSON storage (planned)
 
-- Offers an optional "Submit your own question" flow
+🟠 **Admin (Manual Review) — Manual Process**
 
-🟢 **Backend (Lambda)**
-- GET /questions → returns a randomized batch of canary questions, optionally filtered by tags
+- No moderation dashboard yet
+- To promote a question: manually move it from the pending pool to the main question set (e.g., by editing a JSON file or running a script)
+- To reject a question: manually delete or archive it from the pending pool
+- Tag suggestions and removals are handled by backend endpoints (planned), but can also be done by editing the data files directly
 
-- POST /answers → receives user answers + timing, computes trust score, and sends telemetry data to Honeycomb using OpenTelemetry
+---
 
-- POST /submit-question → saves user-submitted questions to a "pending" pool (S3, DynamoDB, or plain JSON)
-
-- Integrates OpenTelemetry to monitor backend performance and send traces and metrics to Honeycomb
-
-🟣 **Admin (you)**
-- Can manually review pending questions and promote them to the main question set (or not)
-
-- No moderation dashboard needed for now — just promote new questions manually
+**Legend:**
+- 🟢 Working/Implemented
+- 🟡 In Progress/Planned
+- 🟠 Manual/Requires Admin Action
 
 ### Data Flow Summary
 ```
@@ -52,10 +60,12 @@ User → Frontend (WASM) → GET /questions
 
 ```json
 {
-  "id": "q123",
-  "text": "The moon is made of cheese.",
-  "answer": false,
-  "tags": ["science", "myth"]
+  "id": "q003",
+  "tags": ["health"],
+  "question": "is pain experienced in a missing body part or paralyzed area",
+  "title": "Phantom pain",
+  "passage": "Phantom pain sensations are described as perceptions that an individual experiences relating to a limb or an organ that is not physically part of the body. Limb loss is a result of either removal by amputation or congenital limb deficiency. However, phantom limb sensations can also occur following nerve avulsion or spinal cord injury.",
+  "answer": true
 }
 ```
 
