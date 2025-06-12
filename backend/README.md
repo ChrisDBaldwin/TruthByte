@@ -3,12 +3,12 @@
 This directory contains a Python 3.13.5 backend with three AWS Lambda functions:
 
 - `submit_answer`
-- `fetch_question`
+- `fetch_questions`
 - `propose_question`
 
 ## Structure
 
-- `submit_answer.py`, `fetch_question.py`, `propose_question.py`: Lambda entrypoints (handlers)
+- `submit_answer.py`, `fetch_questions.py`, `propose_question.py`: Lambda entrypoints (handlers)
 - `logic/`: Business logic for each Lambda
 - `shared/`: Shared code (e.g., DynamoDB client, data models)
 
