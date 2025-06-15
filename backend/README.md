@@ -2,13 +2,13 @@
 
 This directory contains a Python 3.13.5 backend with three AWS Lambda functions:
 
-- `submit_answer`
+- `submit_answers`
 - `fetch_questions`
 - `propose_question`
 
 ## Structure
 
-- `submit_answer.py`, `fetch_questions.py`, `propose_question.py`: Lambda entrypoints (handlers)
+- `submit_answers.py`, `fetch_questions.py`, `propose_question.py`: Lambda entrypoints (handlers)
 - `logic/`: Business logic for each Lambda
 - `shared/`: Shared code (e.g., DynamoDB client, data models)
 
@@ -62,27 +62,25 @@ To verify the installation:
 python -c "import boto3; import pydantic; print('Setup successful!')"
 ```
 
-## Example: submit_answer
+## Example: submit_answers
 
-The `submit_answer` Lambda expects a JSON input like:
+The `submit_answers` Lambda expects a JSON input like:
 
 ```json
 {
-  "user_id": "u001",
-  "question_id": "q001",
-  "answer": true,
-  "timestamp": 1710000000
+  answers: [
+    {
+      "user_id": "u001",
+      "question_id": "q001",
+      "answer": true,
+      "timestamp": 1710000000
+    },
+    {
+      "user_id": "u001",
+      "question_id": "q002",
+      "answer": false,
+      "timestamp": 1711234567
+    }
+  ]
 }
 ```
-
-To test locally:
-
-```sh
-python -c "import submit_answer; print(submit_answer.lambda_handler({'user_id': 'u001', 'question_id': 'q001', 'answer': true, 'timestamp': 1710000000}, None))"
-```
-
-## Notes
-
-- Only `submit_answer` is fully implemented as a working example.
-- DynamoDB table name is hardcoded as `answers`.
-- Other Lambdas are stubbed for future implementation. 

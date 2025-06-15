@@ -9,7 +9,7 @@ pub const AnswerInput = struct {
     timestamp: u64,
 };
 
-pub fn submit_answer(input: AnswerInput) !void {
+pub fn submit_answers(input: AnswerInput) !void {
     // placeholder logic
     std.debug.print("Saving answer from user {s} on question {s}: {}\n", .{ input.user_id, input.question_id, input.answer });
 

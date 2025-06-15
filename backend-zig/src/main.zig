@@ -11,5 +11,5 @@ pub fn main() !void {
         .answer = true,
         .timestamp = @as(u64, @intCast(std.time.timestamp())),
     };
-    try utils.submit_answer(input);
+    try utils.submit_answers(input);
 }

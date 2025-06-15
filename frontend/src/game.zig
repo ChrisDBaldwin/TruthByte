@@ -64,7 +64,7 @@ const UserSessionResponse = struct {
     timestamp: i64,
 };
 
-const GameStateEnum = enum { Answering, Submitting, Finished };
+const GameStateEnum = enum { Loading, Answering, Submitting, Finished };
 
 const Question = struct {
     id: [:0]const u8, // Unique identifier
@@ -101,7 +101,7 @@ pub const GameState = struct {
     bg_color: rl.Color = rl.Color{ .r = 200, .g = 215, .b = 235, .a = 255 },
     fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
-    game_state: GameStateEnum = .Answering,
+    game_state: GameStateEnum = .Loading,
     session: Session = undefined,
     user_session: UserSessionResponse = UserSessionResponse{
         .responses = undefined,
@@ -116,11 +116,16 @@ pub const GameState = struct {
     // Per-question state
     response: QuestionResponse = QuestionResponse{ .question_id = "q001", .answer = null },
     selected: ?bool = null,
+    // Loading state
+    loading_message: [:0]const u8 = "Loading questions...",
     // PRNG
     prng: std.Random.DefaultPrng = undefined,
     last_screen_width: i32 = 0,
     last_screen_height: i32 = 0,
 };
+
+// Global state pointer for callbacks (needed because callbacks can't capture context)
+var g_state: ?*GameState = null;
 
 // --- Helper functions and JS interop ---
 /// Only declare these for WASM targets (e.g., wasm32-freestanding or emscripten)
@@ -131,8 +136,13 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     extern fn get_token_len() usize;
     extern fn get_canvas_width() i32;
     extern fn get_canvas_height() i32;
-
     extern fn set_invited_shown(val: bool) void;
+
+    // API functions
+    extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    extern fn propose_question(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+
     pub export fn alloc(size: usize) *u8 {
         return @ptrCast(std.heap.page_allocator.alloc(u8, size) catch unreachable);
     }
@@ -185,6 +195,29 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
 
     pub fn get_canvas_height() i32 {
         return rl.getScreenHeight();
+    }
+
+    // Stub API functions for native builds
+    pub fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = num_questions;
+        _ = tag_ptr;
+        _ = tag_len;
+        _ = callback_ptr;
+        std.debug.print("fetch_questions is not available in native build\n", .{});
+    }
+
+    pub fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = json_ptr;
+        _ = json_len;
+        _ = callback_ptr;
+        std.debug.print("submit_answers is not available in native build\n", .{});
+    }
+
+    pub fn propose_question(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = json_ptr;
+        _ = json_len;
+        _ = callback_ptr;
+        std.debug.print("propose_question is not available in native build\n", .{});
     }
 
     /// Local helper so rest of Zig can use slices
@@ -261,31 +294,19 @@ fn randomPalette(state: *GameState) Palette {
 }
 
 fn startSession(state: *GameState) void {
-    state.session = Session{
-        .questions = question_pool,
-        .current = 0,
-        .correct = 0,
-        .finished = false,
-    };
-    state.user_session.timestamp = std.time.timestamp();
-    // Temporarily disable JS interop to test alignment issue
-    // state.user_session.session_id = js.get_session_id_slice();
-    // state.user_session.token = js.get_token_slice();
-    state.user_session.session_id = "dummy-session";
-    state.user_session.token = "dummy-token";
-    state.user_session.trust = state.user_trust;
-    state.user_session.invitable = false;
-    var i: usize = 0;
-    while (i < 10) : (i += 1) {
-        state.user_session.responses[i] = QuestionResponse{
-            .question_id = state.session.questions[i].id,
-            .answer = null,
-            .start_time = 0,
-            .duration = 0.0,
-        };
+    state.game_state = .Loading;
+    state.loading_message = "Loading questions...";
+
+    // Set global state for callback
+    g_state = state;
+
+    // Call fetch_questions API
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        js.fetch_questions(10, null, 0, on_questions_received);
+    } else {
+        // For native builds, use fallback immediately
+        initSessionWithFallback(state);
     }
-    state.game_state = .Answering;
-    // state.invited_shown = get_invited_shown();
 }
 
 fn currentResponse(state: *GameState) *QuestionResponse {
@@ -335,6 +356,10 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
     const pal = randomPalette(state);
     state.bg_color = pal.bg;
     state.fg_color = pal.fg;
+
+    // Set global state pointer for callbacks
+    g_state = state;
+
     startSession(state);
     state.input_active = false;
     state.input_len = 0;
@@ -457,6 +482,11 @@ pub export fn update(state: *GameState) callconv(.C) void {
     if (state.game_state == .Answering and state.session.current < 10 and currentResponse(state).start_time == 0) {
         currentResponse(state).start_time = std.time.timestamp();
     }
+
+    // Don't process input during loading
+    if (state.game_state == .Loading) {
+        return;
+    }
 }
 
 pub export fn draw(state: *GameState) callconv(.C) void {
@@ -476,7 +506,24 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     const buttons_y = question_y + LARGE_FONT_SIZE + ELEMENT_SPACING;
     const confirm_button_y = buttons_y + button_h + ELEMENT_SPACING;
 
-    if (state.game_state == .Answering) {
+    if (state.game_state == .Loading) {
+        // Loading screen
+        const loading_width = raylib.measureText(state.loading_message, LARGE_FONT_SIZE);
+        raylib.drawText(state.loading_message, @divTrunc((screen_width - loading_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
+
+        // Simple loading animation (spinning dots)
+        const time = raylib.getTime();
+        const dot_count = @as(usize, @intFromFloat(@mod(time, 3.0))) + 1;
+        var loading_dots: [4]u8 = undefined;
+        var i: usize = 0;
+        while (i < dot_count and i < 3) : (i += 1) {
+            loading_dots[i] = '.';
+        }
+        loading_dots[dot_count] = 0;
+        const dots_text: [:0]const u8 = @ptrCast(loading_dots[0..dot_count :0]);
+        const dots_width = raylib.measureText(dots_text, LARGE_FONT_SIZE);
+        raylib.drawText(dots_text, @divTrunc((screen_width - dots_width), 2), question_y + MEDIUM_SPACING, LARGE_FONT_SIZE, state.fg_color);
+    } else if (state.game_state == .Answering) {
         const qnum = state.session.current + 1;
         // Use a simpler approach to avoid WASM memory issues
         var qstr_buf: [32]u8 = undefined;
@@ -560,4 +607,53 @@ pub export fn reload(state: *GameState) callconv(.C) void {
 
 pub export fn stateSize() callconv(.C) usize {
     return @sizeOf(GameState);
+}
+
+// Callback function for fetch_questions API response
+export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
+    if (g_state == null) return;
+    const state = g_state.?;
+
+    if (success == 0) {
+        // Error occurred
+        const error_msg = data_ptr[0..data_len];
+        std.debug.print("Failed to fetch questions: {s}\n", .{error_msg});
+        state.loading_message = "Failed to load questions. Using fallback.";
+        // Use fallback questions
+        initSessionWithFallback(state);
+        return;
+    }
+
+    // Parse JSON response
+    const json_str = data_ptr[0..data_len];
+    std.debug.print("Received questions JSON: {s}\n", .{json_str});
+
+    // For now, use fallback questions until we implement JSON parsing
+    // TODO: Parse JSON and extract questions
+    state.loading_message = "Questions loaded!";
+    initSessionWithFallback(state);
+}
+
+fn initSessionWithFallback(state: *GameState) void {
+    state.session = Session{
+        .questions = question_pool,
+        .current = 0,
+        .correct = 0,
+        .finished = false,
+    };
+    state.user_session.timestamp = std.time.timestamp();
+    state.user_session.session_id = "dummy-session";
+    state.user_session.token = "dummy-token";
+    state.user_session.trust = state.user_trust;
+    state.user_session.invitable = false;
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        state.user_session.responses[i] = QuestionResponse{
+            .question_id = state.session.questions[i].id,
+            .answer = null,
+            .start_time = 0,
+            .duration = 0.0,
+        };
+    }
+    state.game_state = .Answering;
 }
