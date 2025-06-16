@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Distribution for TruthByte Frontend'
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: The name of the S3 bucket hosting the frontend
+  OAIId:
+    Type: String
+    Description: The CloudFront Origin Access Identity ID
+  DefaultRootObject:
+    Type: String
+    Default: index.html
+    Description: Default file to serve from the S3 origin
+  AcmCertificateId:
+    Type: String
+    Description: The ACM certificate ID (not the full ARN) for HTTPS
+
+Resources:
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: "TruthByte CloudFront Distribution"
+        DefaultRootObject: !Ref DefaultRootObject
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub "${BucketName}.s3.amazonaws.com"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OAIId}"
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          AcmCertificateArn: !Sub "arn:aws:acm:us-east-1:${AWS::AccountId}:certificate/${AcmCertificateId}"
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        PriceClass: PriceClass_100
+
+Outputs:
+  DistributionDomainName:
+    Description: 'CloudFront distribution domain name'
+    Value: !GetAtt FrontendDistribution.DomainName

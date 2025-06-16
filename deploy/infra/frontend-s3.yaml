@@ -6,11 +6,14 @@ Parameters:
     Type: String
     Default: truthbyte.voidtalker.com
     Description: S3 bucket name for the static site
-  CloudFrontOAI:
-    Type: String
-    Description: CloudFront Origin Access Identity (OAI) canonical user ID (get this from your CloudFront console)
 
 Resources:
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: "TruthByte CloudFront OAI"
+
   FrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -20,11 +23,10 @@ Resources:
         ErrorDocument: index.html
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
-        BlockPublicPolicy: false  # Change to true if you want to block public access to the bucket
+        BlockPublicPolicy: false
         IgnorePublicAcls: true
-        RestrictPublicBuckets: false  # Change to true if you want to block public access to the bucket
+        RestrictPublicBuckets: false
 
-  # Policy to allow CloudFront OAI to read from the bucket
   FrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -34,7 +36,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              CanonicalUser: !Ref CloudFrontOAI
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
             Action: 's3:GetObject'
             Resource: !Sub 'arn:aws:s3:::${FrontendBucket}/*'
 
@@ -42,6 +44,11 @@ Outputs:
   WebsiteURL:
     Description: 'URL for static website hosting'
     Value: !GetAtt FrontendBucket.WebsiteURL
+
   BucketName:
     Description: 'S3 bucket name'
-    Value: !Ref FrontendBucket 
+    Value: !Ref FrontendBucket
+
+  CloudFrontOAIId:
+    Description: 'CloudFront Origin Access Identity ID'
+    Value: !Ref CloudFrontOAI

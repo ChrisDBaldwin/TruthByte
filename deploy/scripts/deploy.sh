@@ -1,20 +1,32 @@
 #!/bin/bash
 
-# TruthByte Deployment Script
+# TruthByte Master Deployment Script
+#
+# This script can deploy backend, frontend, or both components of TruthByte
 #
 # Required Environment Variables:
 # - AWS_ACCESS_KEY_ID: AWS access key for deployment
 # - AWS_SECRET_ACCESS_KEY: AWS secret key for deployment
 # - AWS_DEFAULT_REGION: AWS region (defaults to us-east-1 if not provided)
+# - EMSDK: Path to Emscripten SDK (required for frontend WebAssembly build)
 #
-# Required Command Line Arguments:
-# - --environment: Deployment environment (dev|prod)
-# - --artifact-bucket: S3 bucket name for Lambda artifacts
+# Command Line Arguments:
+# - --component: What to deploy (backend|frontend|all) [default: all]
+# - --environment: Deployment environment (dev|prod) [required for backend]
+# - --artifact-bucket: S3 bucket name for Lambda artifacts [required for backend]
+# - --frontend-bucket: S3 bucket name for frontend hosting [required for frontend]
 # - --region: (optional) AWS region to deploy to
+
+# Default values
+REGION="us-east-1"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --component)
+            COMPONENT="$2"
+            shift 2
+            ;;
         --environment)
             ENVIRONMENT="$2"
             shift 2
@@ -23,97 +35,148 @@ while [[ $# -gt 0 ]]; do
             ARTIFACT_BUCKET="$2"
             shift 2
             ;;
+        --bucket)
+            BUCKET="$2"
+            shift 2
+            ;;
+        --certificate-id)
+            CERTIFICATE_ID="$2"
+            shift 2
+            ;;
         --region)
             REGION="$2"
             shift 2
             ;;
+        --help)
+            echo "TruthByte Master Deployment Script"
+            echo ""
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --component <backend|frontend|all>  What to deploy (required)"
+            echo "  --environment <dev|prod>            Environment for backend deployment"
+            echo "  --artifact-bucket <name>            S3 bucket for Lambda artifacts"
+            echo "  --bucket <name>                     S3 bucket for frontend hosting"
+            echo "  --certificate-id <id>               ACM certificate ID for HTTPS (optional)"
+            echo "  --region <region>                   AWS region (default: us-east-1)"
+            echo "  --help                              Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0 --component backend --environment dev --artifact-bucket my-lambda-bucket"
+            echo "  $0 --component frontend --bucket my-website.com --certificate-id 12345678-1234-1234-1234-123456789012"
+            echo "  $0 --component all --environment prod --artifact-bucket my-lambda-bucket --bucket my-website.com --certificate-id 12345678-1234-1234-1234-123456789012"
+            exit 0
+            ;;
         *)
             echo "Unknown option: $1"
+            echo "Use --help for usage information"
             exit 1
             ;;
     esac
 done
 
-# Validate required parameters
-if [ -z "$ENVIRONMENT" ] || [ -z "$ARTIFACT_BUCKET" ]; then
-    echo "Usage: $0 --environment <dev|prod> --artifact-bucket <bucket-name> [--region <aws-region>]"
+# Validate component parameter
+if [ -z "$COMPONENT" ]; then
+    echo "Error: --component parameter is required"
+    echo ""
+    echo "Usage: $0 --component <backend|frontend|all> [OPTIONS]"
+    echo ""
+    echo "Use --help for detailed usage information"
     exit 1
 fi
 
-# Set default region if not provided
-REGION=${REGION:-"us-east-1"}
+if [[ "$COMPONENT" != "backend" && "$COMPONENT" != "frontend" && "$COMPONENT" != "all" ]]; then
+    echo "Error: Component must be 'backend', 'frontend', or 'all'"
+    exit 1
+fi
+
+# Set AWS region
 export AWS_DEFAULT_REGION=$REGION
 
-# Validate environment
-if [[ "$ENVIRONMENT" != "dev" && "$ENVIRONMENT" != "prod" ]]; then
-    echo "Environment must be either 'dev' or 'prod'"
-    exit 1
+# Function to deploy backend
+deploy_backend() {
+    echo "=== Deploying Backend ==="
+    
+    if [ -z "$ENVIRONMENT" ] || [ -z "$ARTIFACT_BUCKET" ]; then
+        echo "Error: Backend deployment requires --environment and --artifact-bucket"
+        exit 1
+    fi
+    
+    if [[ "$ENVIRONMENT" != "dev" && "$ENVIRONMENT" != "prod" ]]; then
+        echo "Error: Environment must be either 'dev' or 'prod'"
+        exit 1
+    fi
+    
+    echo "Deploying backend to $ENVIRONMENT environment..."
+    ./deploy-backend.sh --environment "$ENVIRONMENT" --artifact-bucket "$ARTIFACT_BUCKET" --region "$REGION"
+    
+    if [ $? -ne 0 ]; then
+        echo "Error: Backend deployment failed"
+        exit 1
+    fi
+    
+    echo "Backend deployment completed successfully"
+}
+
+# Function to deploy frontend
+deploy_frontend() {
+    echo "=== Deploying Frontend ==="
+    
+    if [ -z "$BUCKET" ]; then
+        echo "Error: Frontend deployment requires --bucket"
+        exit 1
+    fi
+    
+    echo "Deploying frontend to S3 bucket: $BUCKET"
+    if [ -n "$CERTIFICATE_ID" ]; then
+        echo "Using SSL certificate ID: $CERTIFICATE_ID"
+        ./deploy-frontend.sh --bucket-name "$BUCKET" --region "$REGION" --certificate-id "$CERTIFICATE_ID"
+    else
+        echo "No SSL certificate ID provided, please provide one to enable HTTPS"
+        exit 1
+    fi
+    
+    if [ $? -ne 0 ]; then
+        echo "Error: Frontend deployment failed"
+        exit 1
+    fi
+    
+    echo "Frontend deployment completed successfully"
+}
+
+# Main deployment logic
+case $COMPONENT in
+    backend)
+        deploy_backend
+        ;;
+    frontend)
+        deploy_frontend
+        ;;
+    all)
+        deploy_backend
+        echo ""
+        deploy_frontend
+        ;;
+esac
+
+echo ""
+echo "=== Deployment Summary ==="
+echo "Component(s) deployed: $COMPONENT"
+echo "Region: $REGION"
+
+if [[ "$COMPONENT" == "backend" || "$COMPONENT" == "all" ]]; then
+    echo "Environment: $ENVIRONMENT"
+    API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-api" --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
+    echo "API Endpoint: $API_ENDPOINT"
 fi
 
-# Create deployment directory
-DEPLOY_DIR="deploy/lambda"
-mkdir -p "$DEPLOY_DIR"
+if [[ "$COMPONENT" == "frontend" || "$COMPONENT" == "all" ]]; then
+    echo "Frontend Bucket: $BUCKET"
+    S3_WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name "truthbyte-frontend-s3" --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
+    CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name "truthbyte-frontend-cloudfront" --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' --output text)
+    echo "S3 Website URL: $S3_WEBSITE_URL"
+    echo "CloudFront URL: https://$CLOUDFRONT_URL"
+fi
 
-# Package Lambda functions
-FUNCTIONS=(
-    "fetch-questions:../backend/lambda/fetch_questions.py"
-    "submit-answers:../backend/lambda/submit_answers.py"
-    "propose-question:../backend/lambda/propose_question.py"
-)   
-
-for func in "${FUNCTIONS[@]}"; do
-    IFS=':' read -r name path <<< "$func"
-    echo "Packaging $name..."
-    
-    # Create temporary directory for packaging
-    TEMP_DIR="$DEPLOY_DIR/$name"
-    mkdir -p "$TEMP_DIR"
-    
-    # Copy function code and dependencies
-    cp "$path" "$TEMP_DIR"
-    cp -r "../backend/logic" "$TEMP_DIR"
-    cp -r "../backend/shared" "$TEMP_DIR"
-    cp "../backend/requirements.txt" "$TEMP_DIR"
-    
-    # Install dependencies
-    pushd "$TEMP_DIR" > /dev/null
-    pip install -r requirements.txt -t .
-    rm requirements.txt
-    
-    # Create deployment package
-    ZIP_FILE="$DEPLOY_DIR/$name.zip"
-    zip -r "$ZIP_FILE" .
-    
-    # Upload to S3
-    echo "Uploading $name to S3..."
-    aws s3 cp "$ZIP_FILE" "s3://$ARTIFACT_BUCKET/$name.zip"
-    
-    # Cleanup
-    popd > /dev/null
-    rm -rf "$TEMP_DIR"
-done
-
-# Deploy infrastructure
-echo "Deploying infrastructure..."
-
-# Deploy DynamoDB tables
-aws cloudformation deploy \
-    --template-file ../infra/dynamodb.yaml \
-    --stack-name "$ENVIRONMENT-truthbyte-dynamodb" \
-    --parameter-overrides Environment="$ENVIRONMENT"
-
-# Deploy Lambda functions
-aws cloudformation deploy \
-    --template-file ../infra/lambdas.yaml \
-    --stack-name "$ENVIRONMENT-truthbyte-lambdas" \
-    --parameter-overrides Environment="$ENVIRONMENT" ArtifactBucket="$ARTIFACT_BUCKET" \
-    --capabilities CAPABILITY_NAMED_IAM
-
-# Deploy API Gateway
-aws cloudformation deploy \
-    --template-file ../infra/api.yaml \
-    --stack-name "$ENVIRONMENT-truthbyte-api" \
-    --parameter-overrides Environment="$ENVIRONMENT"
-
-echo "Deployment complete!"
-echo "API Endpoint: $(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-api" --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)" 
+echo ""
+echo "Deployment completed successfully!" 
