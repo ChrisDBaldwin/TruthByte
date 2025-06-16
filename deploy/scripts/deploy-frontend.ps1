@@ -78,7 +78,7 @@ try {
     Write-Host "Frontend build completed successfully"
 
     # Create deployment directory
-    $deployDir = "../deploy/frontend"
+    $deployDir = "../deploy/artifacts/frontend"
     New-Item -ItemType Directory -Force -Path $deployDir
 
     # Copy built files
@@ -97,15 +97,15 @@ try {
     Write-Host "Found build output in $buildDir"
     
     # Copy main HTML file
-    Copy-Item "$buildDir/index.html" "$deployDir/index.html"
+    Copy-Item "$buildDir/index.html" "$deployDir/index.html" -Force
     
     # Copy WebAssembly and JavaScript files
-    Copy-Item "$buildDir/index.wasm" "$deployDir/index.wasm"
-    Copy-Item "$buildDir/index.js" "$deployDir/index.js"
+    Copy-Item "$buildDir/index.wasm" "$deployDir/index.wasm" -Force
+    Copy-Item "$buildDir/index.js" "$deployDir/index.js" -Force
     
     # Copy any additional assets
     if (Test-Path "res") {
-        Copy-Item "res" "$deployDir/" -Recurse
+        Copy-Item "res" "$deployDir/" -Recurse -Force
     }
 
     Write-Host "Deployment files prepared in $deployDir"
@@ -160,17 +160,15 @@ if ($LASTEXITCODE -ne 0) {
 # Upload files to S3
 Write-Host "Uploading files to S3 bucket: $BucketName"
 
-Push-Location "../../frontend/zig-out/htmlout"
+Push-Location "../artifacts/frontend"
 
 try {
-    # Upload HTML files with proper content type
-    aws s3 cp "index.html" "s3://$BucketName/" --content-type "text/html"
+    # Upload HTML files with proper content type and no cache
+    aws s3 cp "index.html" "s3://$BucketName/" --content-type "text/html" --cache-control "no-store, must-revalidate"
     
-    # Upload WebAssembly files with proper content type
-    aws s3 cp "index.wasm" "s3://$BucketName/" --content-type "application/wasm"
-    
-    # Upload JavaScript files with proper content type
-    aws s3 cp "index.js" "s3://$BucketName/" --content-type "application/javascript"
+    # Upload WebAssembly and JavaScript files with short cache
+    aws s3 cp "index.wasm" "s3://$BucketName/" --content-type "application/wasm" --cache-control "no-store, must-revalidate"
+    aws s3 cp "index.js" "s3://$BucketName/" --content-type "application/javascript" --cache-control "no-store, must-revalidate"
     
     # Upload any additional assets
     if (Test-Path "res") {
@@ -183,9 +181,16 @@ try {
     Pop-Location
 }
 
-# Get the URLs
+# Get the URLs and distribution ID
 $s3WebsiteUrl = aws cloudformation describe-stacks --stack-name "truthbyte-frontend-s3" --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text
 $cloudFrontUrl = aws cloudformation describe-stacks --stack-name "truthbyte-frontend-cloudfront" --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' --output text
+$distributionId = aws cloudformation describe-stacks --stack-name "truthbyte-frontend-cloudfront" --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text
+
+# Invalidate CloudFront cache
+Write-Host "Invalidating CloudFront cache..."
+aws cloudfront create-invalidation `
+  --distribution-id "$distributionId" `
+  --paths "/index.html" "/index.js" "/index.wasm"
 
 Write-Host "Frontend deployment complete!"
 Write-Host "S3 Website URL: $s3WebsiteUrl"

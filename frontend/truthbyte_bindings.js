@@ -1,15 +1,48 @@
 mergeInto(LibraryManager.library, {
   // TruthByte API Configuration
-  API_BASE: "https://api.voidtalker.com/dev", // TODO: Make this dynamic
-  
+  API_BASE: "https://api.yourdomain.com/dev", // TODO: Make this dynamic
+
   get_canvas_width: function() {
     var canvas = document.getElementById("canvas");
-    return canvas ? canvas.width : window.innerWidth;
+    if (canvas) {
+      return canvas.width;
+    }
+    // Better mobile fallback
+    if (window.visualViewport) {
+      return window.visualViewport.width;
+    }
+    return window.innerWidth || document.documentElement.clientWidth;
   },
   
   get_canvas_height: function() {
     var canvas = document.getElementById("canvas");
-    return canvas ? canvas.height : window.innerHeight;
+    if (canvas) {
+      return canvas.height;
+    }
+    // Better mobile fallback
+    if (window.visualViewport) {
+      return window.visualViewport.height;
+    }
+    return window.innerHeight || document.documentElement.clientHeight;
+  },
+
+  // Touch/Mouse position workaround for raylib-zig WASM issues
+  get_input_x: function() {
+    if (window._lastInputX !== undefined) {
+      return window._lastInputX;
+    }
+    return 0;
+  },
+
+  get_input_y: function() {
+    if (window._lastInputY !== undefined) {
+      return window._lastInputY;
+    }
+    return 0;
+  },
+
+  get_input_active: function() {
+    return window._inputActive || false;
   },
   
   get_session_id: function() {

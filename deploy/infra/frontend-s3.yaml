@@ -4,7 +4,6 @@ Description: 'S3 bucket for TruthByte frontend static site'
 Parameters:
   BucketName:
     Type: String
-    Default: truthbyte.voidtalker.com
     Description: S3 bucket name for the static site
 
 Resources:

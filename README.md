@@ -2,18 +2,22 @@
 
 A minimal Zig+WASM game that crowdsources human truth judgments to build better LLM evaluation datasets. Play a fast round of "True or False?" — every answer trains the future.
 
+**🎮 [Play Now: truthbyte.voidtalker.com](https://truthbyte.voidtalker.com)**
+
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Project Overview](#project-overview)
   - [Core Assumptions](#core-assumptions)
   - [System Components](#system-components)
   - [Data Flow](#data-flow)
+- [Mobile & Touch Support](#mobile--touch-support)
 - [Development Guide](#development-guide)
   - [Prerequisites](#prerequisites)
   - [Environment Setup](#environment-setup)
     - [EMSDK Installation](#emsdk-installation)
     - [Environment Variables](#environment-variables)
   - [Building and Running](#building-and-running)
+- [Deployment](#deployment)
 - [Data Structures](#data-structures)
   - [Questions](#questions)
   - [User Submission](#user-submission)
@@ -66,8 +70,10 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 
 🟢 **Frontend (WASM/Zig) — Working**
 - Compiles to WASM and renders the quiz UI in the browser
+- **Full mobile touch support** with iOS Safari optimizations
 - Loads questions, displays passages, and tracks response times per question
 - Makes API calls to the backend for fetching questions and submitting answers
+- **Cross-platform input system** supporting mouse, touch, and keyboard
 - User session tracking is planned (currently commented out)
 - Optional "Submit your own question" flow is planned
 
@@ -93,6 +99,29 @@ User → Frontend (WASM) → GET /questions
      ↓ answers w/ timing  → POST /answers
      ↓ new question       → POST /submit-question
 ```
+
+## Mobile & Touch Support
+
+TruthByte is fully optimized for mobile devices with comprehensive touch input support:
+
+### Features
+- **Universal Input System**: Unified handling of mouse, touch, and keyboard events
+- **Mobile-First UI**: Responsive design that adapts to all screen sizes
+- **iOS Safari Optimizations**: Prevents zoom, bounce scrolling, and touch callouts
+- **Visual Viewport API**: Proper handling of mobile browser UI changes
+- **Touch Event Prevention**: Prevents default browser behaviors that interfere with gameplay
+
+### Technical Implementation
+- **JavaScript Touch Workaround**: Custom coordinate capture system to work around raylib-zig WASM limitations
+- **Canvas Coordinate Mapping**: Accurate touch-to-canvas coordinate conversion
+- **Cross-Platform Build System**: Separate native (`main_hot.zig`) and web (`main_release.zig`) builds
+- **Input State Tracking**: Proper press/release event handling for UI interactions
+
+### Supported Devices
+- ✅ iPhone (Chrome, iOS Safari)
+- ✅ Android (Chrome, Firefox)
+- ✅ iPad (Chrome, Safari)
+- ✅ Desktop (Chrome, Firefox, Safari, Edge)
 
 ## Development Guide
 
@@ -171,18 +200,56 @@ emcc --version
 cd frontend
 ```
 
-2. Build and run the WASM target:
+2. **Development Build** (with hot-reload):
 ```bash
-zig build -Dtarget=wasm32-emscripten run
+zig build run
+```
+
+3. **Production Build** (WASM for deployment):
+```bash
+zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseFast
+```
+
+4. **Test Local Web Build**:
+```bash
+# Build for web
+zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseFast
+
+# Serve locally (Python)
+python -m http.server 8000
+
+# Open http://localhost:8000/zig-out/htmlout/index.html
+
 ```
 
 This will:
 - Compile the Zig code to WebAssembly
-- Start a local development server
-- Open your default browser to the application
-- Enable hot-reloading for development
+- Generate optimized WASM, JS, and HTML files
+- Enable testing of the actual deployed version locally
 
 If you encounter the error `EMSDK environment variable not found`, ensure you've set up the EMSDK environment variable as described above.
+
+## Deployment
+
+TruthByte uses automated deployment scripts for AWS infrastructure:
+
+### Frontend Deployment
+```bash
+# Deploy to S3 with CloudFront
+cd deploy
+./scripts/deploy-frontend.sh --bucket-name truthbyte.yourdomain.com --certificate-id YOUR_CERT_ID
+
+# PowerShell (Windows)
+.\scripts\deploy-frontend.ps1 -BucketName truthbyte.yourdomain.com -CertificateId YOUR_CERT_ID
+```
+
+### Features
+- **Automated S3 Setup**: Creates bucket with static website hosting
+- **CloudFront Integration**: Automatic CDN setup with HTTPS
+- **Optimized Caching**: Proper cache-control headers for web assets
+- **Cross-Platform Scripts**: Both Bash and PowerShell support
+
+See [deploy/README.md](deploy/README.md) for detailed deployment instructions.
 
 ## Data Structures
 

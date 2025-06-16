@@ -93,19 +93,19 @@ fi
 echo "Frontend build completed successfully"
 
 # Create deployment directory
-DEPLOY_DIR="../deploy/frontend"
+DEPLOY_DIR="../deploy/artifacts/frontend"
 mkdir -p "$DEPLOY_DIR"
 
 # Copy built files
 echo "Preparing deployment files..."
 
 # Check build output location (could be bin or htmlout depending on raylib-zig version)
-if [ -f "zig-out/htmlout/game.html" ]; then
+if [ -f "zig-out/htmlout/index.html" ]; then
     BUILD_DIR="zig-out/htmlout"
-elif [ -f "zig-out/bin/game.html" ]; then
+elif [ -f "zig-out/bin/index.html" ]; then
     BUILD_DIR="zig-out/bin"
 else
-    echo "Error: Could not find build output. Expected game.html in zig-out/bin or zig-out/htmlout"
+    echo "Error: Could not find build output. Expected index.html in zig-out/bin or zig-out/htmlout"
     popd > /dev/null
     exit 1
 fi
@@ -113,15 +113,15 @@ fi
 echo "Found build output in $BUILD_DIR"
 
 # Copy main HTML file
-cp "$BUILD_DIR/game.html" "$DEPLOY_DIR/index.html"
+cp "$BUILD_DIR/index.html" "$DEPLOY_DIR/index.html"
 
 # Copy WebAssembly and JavaScript files
-cp "$BUILD_DIR/game.wasm" "$DEPLOY_DIR/index.wasm"
-cp "$BUILD_DIR/game.js" "$DEPLOY_DIR/index.js"
+cp "$BUILD_DIR/index.wasm" "$DEPLOY_DIR/index.wasm"
+cp "$BUILD_DIR/index.js" "$DEPLOY_DIR/index.js"
 
 # Copy any additional assets
 if [ -d "res" ]; then
-    cp -r "res" "$DEPLOY_DIR/"
+    cp -rf "res" "$DEPLOY_DIR/"
 fi
 
 echo "Deployment files prepared in $DEPLOY_DIR"
@@ -174,16 +174,14 @@ fi
 # Upload files to S3
 echo "Uploading files to S3 bucket: $BUCKET_NAME"
 
-pushd "deploy/frontend" > /dev/null
+pushd "deploy/artifacts/frontend" > /dev/null
 
-# Upload HTML files with proper content type
-aws s3 cp "index.html" "s3://$BUCKET_NAME/" --content-type "text/html"
+# Upload HTML files with proper content type and no cache
+aws s3 cp "index.html" "s3://$BUCKET_NAME/" --content-type "text/html" --cache-control "no-store, must-revalidate"
 
-# Upload WebAssembly files with proper content type
-aws s3 cp "index.wasm" "s3://$BUCKET_NAME/" --content-type "application/wasm"
-
-# Upload JavaScript files with proper content type
-aws s3 cp "index.js" "s3://$BUCKET_NAME/" --content-type "application/javascript"
+# Upload WebAssembly and JavaScript files with short cache
+aws s3 cp "index.wasm" "s3://$BUCKET_NAME/" --content-type "application/wasm" --cache-control "no-store, must-revalidate"
+aws s3 cp "index.js" "s3://$BUCKET_NAME/" --content-type "application/javascript" --cache-control "no-store, must-revalidate"
 
 # Upload any additional assets
 if [ -d "res" ]; then
@@ -194,9 +192,16 @@ echo "Files uploaded successfully"
 
 popd > /dev/null
 
-# Get the URLs
+# Get the URLs and distribution ID
 S3_WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name "truthbyte-frontend-s3" --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' --output text)
 CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name "truthbyte-frontend-cloudfront" --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' --output text)
+DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name "truthbyte-frontend-cloudfront" --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' --output text)
+
+# Invalidate CloudFront cache
+echo "Invalidating CloudFront cache..."
+aws cloudfront create-invalidation \
+  --distribution-id "$DISTRIBUTION_ID" \
+  --paths "/index.html" "/index.js" "/index.wasm"
 
 echo "Frontend deployment complete!"
 echo "S3 Website URL: $S3_WEBSITE_URL"

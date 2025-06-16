@@ -116,6 +116,9 @@ pub const GameState = struct {
     // Per-question state
     response: QuestionResponse = QuestionResponse{ .question_id = "q001", .answer = null },
     selected: ?bool = null,
+    // Input state tracking
+    last_mouse_pressed: bool = false,
+    last_touch_active: bool = false,
     // Loading state
     loading_message: [:0]const u8 = "Loading questions...",
     // PRNG
@@ -127,6 +130,80 @@ pub const GameState = struct {
 // Global state pointer for callbacks (needed because callbacks can't capture context)
 var g_state: ?*GameState = null;
 
+// --- Input handling functions ---
+pub const InputEvent = struct {
+    pressed: bool,
+    released: bool,
+    position: rl.Vector2,
+    source: enum { mouse, touch },
+};
+
+fn getInputEvent(state: *GameState) ?InputEvent {
+    // Get current input states
+    const mouse_pressed = rl.isMouseButtonDown(.left);
+    const touch_count = rl.getTouchPointCount();
+    const touch_active = touch_count > 0;
+
+    var event: ?InputEvent = null;
+
+    // Handle touch input first (prioritize touch over mouse)
+    if (touch_active and !state.last_touch_active) {
+        // Touch started - use JavaScript coordinates (workaround for raylib-zig WASM issue)
+        const js_x = if (builtin.target.os.tag == .emscripten) js.get_input_x() else 0;
+        const js_y = if (builtin.target.os.tag == .emscripten) js.get_input_y() else 0;
+
+        // Use JavaScript coordinates if available, otherwise fallback to center of screen
+        const screen_size = get_canvas_size();
+        const actual_pos = if (js_x > 0 or js_y > 0)
+            rl.Vector2{ .x = @as(f32, @floatFromInt(js_x)), .y = @as(f32, @floatFromInt(js_y)) }
+        else
+            rl.Vector2{ .x = @as(f32, @floatFromInt(@divTrunc(screen_size.w, 2))), .y = @as(f32, @floatFromInt(@divTrunc(screen_size.h, 2))) };
+
+        event = InputEvent{
+            .pressed = true,
+            .released = false,
+            .position = actual_pos,
+            .source = .touch,
+        };
+    } else if (!touch_active and state.last_touch_active) {
+        // Touch ended - use last known mouse position as fallback
+        // (we can't get touch position after touch ends)
+        event = InputEvent{
+            .pressed = false,
+            .released = true,
+            .position = rl.getMousePosition(), // Fallback position
+            .source = .touch,
+        };
+    }
+
+    // If no touch input, handle mouse events
+    if (event == null and !touch_active) {
+        if (mouse_pressed and !state.last_mouse_pressed) {
+            // Mouse pressed
+            event = InputEvent{
+                .pressed = true,
+                .released = false,
+                .position = rl.getMousePosition(),
+                .source = .mouse,
+            };
+        } else if (!mouse_pressed and state.last_mouse_pressed) {
+            // Mouse released
+            event = InputEvent{
+                .pressed = false,
+                .released = true,
+                .position = rl.getMousePosition(),
+                .source = .mouse,
+            };
+        }
+    }
+
+    // Update state tracking
+    state.last_mouse_pressed = mouse_pressed;
+    state.last_touch_active = touch_active;
+
+    return event;
+}
+
 // --- Helper functions and JS interop ---
 /// Only declare these for WASM targets (e.g., wasm32-freestanding or emscripten)
 pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) struct {
@@ -137,6 +214,9 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     extern fn get_canvas_width() i32;
     extern fn get_canvas_height() i32;
     extern fn set_invited_shown(val: bool) void;
+    extern fn get_input_x() i32;
+    extern fn get_input_y() i32;
+    extern fn get_input_active() bool;
 
     // API functions
     extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
@@ -195,6 +275,18 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
 
     pub fn get_canvas_height() i32 {
         return rl.getScreenHeight();
+    }
+
+    pub fn get_input_x() i32 {
+        return 0;
+    }
+
+    pub fn get_input_y() i32 {
+        return 0;
+    }
+
+    pub fn get_input_active() bool {
+        return false;
     }
 
     // Stub API functions for native builds
@@ -420,23 +512,26 @@ pub export fn update(state: *GameState) callconv(.C) void {
     const input_box_y = @as(f32, @floatFromInt(question_y + MEDIUM_SPACING));
     const input_box = raylib.Rectangle{ .x = input_box_x, .y = input_box_y, .width = INPUT_BOX_WIDTH, .height = INPUT_BOX_HEIGHT };
 
-    if (raylib.isMouseButtonPressed(.left)) {
-        const mouse = raylib.getMousePosition();
-        if (raylib.checkCollisionPointRec(mouse, submit_btn)) {
+    if (getInputEvent(state)) |input| {
+        // Only handle press events for UI interactions (ignore releases)
+        if (!input.pressed) return;
+
+        const pos = input.position;
+        if (raylib.checkCollisionPointRec(pos, submit_btn)) {
             state.game_state = .Submitting;
-        } else if (raylib.checkCollisionPointRec(mouse, answer_btn)) {
+        } else if (raylib.checkCollisionPointRec(pos, answer_btn)) {
             startSession(state);
-        } else if (state.game_state == .Submitting and raylib.checkCollisionPointRec(mouse, input_box)) {
+        } else if (state.game_state == .Submitting and raylib.checkCollisionPointRec(pos, input_box)) {
             state.input_active = true;
         } else if (state.game_state == .Submitting) {
             state.input_active = false;
-        } else if (raylib.checkCollisionPointRec(mouse, button_rect_true)) {
+        } else if (raylib.checkCollisionPointRec(pos, button_rect_true)) {
             state.selected = true;
             state.response.answer = true;
-        } else if (raylib.checkCollisionPointRec(mouse, button_rect_false)) {
+        } else if (raylib.checkCollisionPointRec(pos, button_rect_false)) {
             state.selected = false;
             state.response.answer = false;
-        } else if (raylib.checkCollisionPointRec(mouse, confirm_rect) and state.selected != null) {
+        } else if (raylib.checkCollisionPointRec(pos, confirm_rect) and state.selected != null) {
             var r = currentResponse(state);
             const now = std.time.timestamp();
             r.answer = state.response.answer;
@@ -458,7 +553,7 @@ pub export fn update(state: *GameState) callconv(.C) void {
             }
             state.response.answer = null;
             state.selected = null;
-        } else if (raylib.checkCollisionPointRec(mouse, randomize_btn)) {
+        } else if (raylib.checkCollisionPointRec(pos, randomize_btn)) {
             const new_pal = randomPalette(state);
             state.bg_color = new_pal.bg;
             state.fg_color = new_pal.fg;
