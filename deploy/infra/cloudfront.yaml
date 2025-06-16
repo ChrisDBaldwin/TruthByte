@@ -49,3 +49,6 @@ Outputs:
   DistributionDomainName:
     Description: 'CloudFront distribution domain name'
     Value: !GetAtt FrontendDistribution.DomainName
+  DistributionId:
+    Description: 'CloudFront distribution ID'
+    Value: !GetAtt FrontendDistribution.Id
