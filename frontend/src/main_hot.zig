@@ -30,7 +30,7 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     var allocator = arena.allocator();
 
-    rl.setConfigFlags(.{ .fullscreen_mode = true });
+    // Don't use fullscreen mode for better mobile compatibility
     const size = game.get_canvas_size();
     rl.initWindow(size.w, size.h, "TruthByte");
     std.debug.print("Screen resolution (from canvas): {}x{}\n", .{ size.w, size.h });

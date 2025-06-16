@@ -3,7 +3,7 @@ const std = @import("std");
 const game = @import("game.zig");
 
 pub fn main() !void {
-    rl.setConfigFlags(.{ .fullscreen_mode = true });
+    // Don't use fullscreen mode for better mobile compatibility
     const size = game.get_canvas_size();
     rl.initWindow(size.w, size.h, "TruthByte");
     std.debug.print("Screen resolution (from canvas): {}x{}\n", .{ size.w, size.h });

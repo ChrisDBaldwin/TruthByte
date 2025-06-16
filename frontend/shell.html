@@ -7,12 +7,28 @@
           overflow: hidden;
           background: black;
           height: 100%;
+          /* Prevent iOS Safari from bouncing */
+          -webkit-overflow-scrolling: touch;
+          position: fixed;
+          width: 100%;
         }
       
         canvas {
           display: block;
+          padding: 0;
+          margin: 0;
           width: 100vw;
           height: 100vh;
+          overflow: hidden;
+          /* Prevent iOS touch callouts and selection */
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+          /* Prevent all default touch behaviors */
+          touch-action: none;
         }
     </style>
       
@@ -22,19 +38,15 @@
             http-equiv="Content-Type"
             content="text/html; charset=utf-8"
         />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="mobile-web-app-capable" content="yes">
         <style>
             * {
                 padding: 0;
                 margin: 0;
                 box-sizing: content-box;
-            }
-
-            canvas {
-                padding: 0;
-                margin: 0;
-                width: 100vw;
-                height: 100vh;
-                overflow: hidden;
             }
         </style>
     </head>
@@ -52,7 +64,10 @@
             var Module = {
                 canvas: (function () {
                     return document.getElementById("canvas");
-                })()
+                })(),
+                onRuntimeInitialized: function() {
+                    // Call debug function if available
+                }
             };
         </script>
 
@@ -62,12 +77,116 @@
         <script>
         function resizeCanvas() {
             var canvas = document.getElementById("canvas");
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            // Use visual viewport for better mobile support
+            var width = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+            var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
         }
+        
+        // Enhanced mobile event handling
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('load', resizeCanvas);
+        window.addEventListener('orientationchange', function() {
+            setTimeout(resizeCanvas, 100); // Delay to allow orientation change to complete
+        });
+        
+        // Visual viewport support for mobile browsers
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', resizeCanvas);
+        }
+        
         resizeCanvas();
+        
+        // Enhanced touch event handling for game input
+        var canvas = document.getElementById("canvas");
+        if (canvas) {
+            // Initialize input tracking variables
+            window._lastInputX = 0;
+            window._lastInputY = 0;
+            window._inputActive = false;
+            
+            // Helper function to get canvas-relative coordinates
+            function getCanvasCoordinates(clientX, clientY) {
+                var rect = canvas.getBoundingClientRect();
+                var scaleX = canvas.width / rect.width;
+                var scaleY = canvas.height / rect.height;
+                return {
+                    x: Math.round((clientX - rect.left) * scaleX),
+                    y: Math.round((clientY - rect.top) * scaleY)
+                };
+            }
+            
+            // Touch event handlers
+            canvas.addEventListener("touchstart", function(e) {
+                e.preventDefault();
+                if (e.touches.length > 0) {
+                    var coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+                    window._lastInputX = coords.x;
+                    window._lastInputY = coords.y;
+                    window._inputActive = true;
+                }
+            }, { passive: false });
+            
+            canvas.addEventListener("touchend", function(e) {
+                e.preventDefault();
+                window._inputActive = false;
+            }, { passive: false });
+            
+            canvas.addEventListener("touchmove", function(e) {
+                e.preventDefault();
+                if (e.touches.length > 0) {
+                    var coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+                    window._lastInputX = coords.x;
+                    window._lastInputY = coords.y;
+                }
+            }, { passive: false });
+            
+            // Mouse event handlers (fallback)
+            canvas.addEventListener("mousedown", function(e) {
+                var coords = getCanvasCoordinates(e.clientX, e.clientY);
+                window._lastInputX = coords.x;
+                window._lastInputY = coords.y;
+                window._inputActive = true;
+            });
+            
+            canvas.addEventListener("mouseup", function(e) {
+                window._inputActive = false;
+            });
+            
+            canvas.addEventListener("mousemove", function(e) {
+                if (window._inputActive) {
+                    var coords = getCanvasCoordinates(e.clientX, e.clientY);
+                    window._lastInputX = coords.x;
+                    window._lastInputY = coords.y;
+                }
+            });
+
+            document.body.addEventListener("touchstart", function (e) {
+                e.preventDefault();
+            }, { passive: false });
+
+            document.body.addEventListener("touchmove", function (e) {
+                e.preventDefault();
+            }, { passive: false });
+            
+        }
+        
+        // Prevent iOS Safari from zooming on double tap
+        document.addEventListener('touchstart', function (event) {
+            if (event.touches.length > 1) {
+                event.preventDefault(); // Prevent pinch zoom
+            }
+        }, { passive: false });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault(); // Prevent double-tap zoom
+            }
+            lastTouchEnd = now;
+        }, false);
         </script>
     </body>
 </html>

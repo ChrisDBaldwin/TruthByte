@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 bucket for TruthByte frontend static site'
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: S3 bucket name for the static site
+
+Resources:
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: "TruthByte CloudFront OAI"
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${FrontendBucket}/*'
+
+Outputs:
+  WebsiteURL:
+    Description: 'URL for static website hosting'
+    Value: !GetAtt FrontendBucket.WebsiteURL
+
+  BucketName:
+    Description: 'S3 bucket name'
+    Value: !Ref FrontendBucket
+
+  CloudFrontOAIId:
+    Description: 'CloudFront Origin Access Identity ID'
+    Value: !Ref CloudFrontOAI
