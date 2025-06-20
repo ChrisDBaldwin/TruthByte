@@ -40,8 +40,6 @@ def lambda_handler(event, context):
         - statusCode: 200 for success, 400 for bad request, 401 for auth errors, 500 for server error
         - body: JSON string containing success status and optional error message
     """
-    print(f"🚀 Lambda handler started")
-    print(f"📥 Event: {json.dumps(event, default=str)}")
     
     try:
         # JWT Authentication Check
@@ -77,10 +75,7 @@ def lambda_handler(event, context):
             }
         # Parse the request body from API Gateway event
         # API Gateway wraps the body in a "body" field as a string
-        print(f"📝 Raw body: {event.get('body', 'No body field')}")
         body = json.loads(event["body"]) if "body" in event else event
-        print(f"📋 Parsed body: {body}")
-        print(f"📊 Body type: {type(body)}, Length: {len(body) if isinstance(body, list) else 'N/A'}")
         
         # Validate input is a list
         if not isinstance(body, list):
@@ -117,10 +112,8 @@ def lambda_handler(event, context):
         # Submit answers to DynamoDB
         # Get DynamoDB table resource
         table_name = os.environ.get('ANSWERS_TABLE_NAME', 'truthbyte-answers')
-        print(f"🗄️ Using table: {table_name}")
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table(table_name)
-        print(f"📊 Writing {len(body)} answers to DynamoDB")
         
         # Prepare batch write request
         # Each item needs to be wrapped in a PutRequest for batch_write_item
@@ -154,7 +147,6 @@ def lambda_handler(event, context):
         # This could happen due to throttling or other temporary issues
         success = True
         if 'UnprocessedItems' in response and table.name in response['UnprocessedItems']:
-            print(f"Unprocessed items: {response['UnprocessedItems'][table.name]}")
             success = False
         
         # Return appropriate response based on submission result

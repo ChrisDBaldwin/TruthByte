@@ -148,6 +148,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                   - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
                 Resource:
                   - Fn::ImportValue: 
                       Fn::Sub: ${Environment}-QuestionsTableArn
