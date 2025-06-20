@@ -18,7 +18,6 @@ function setupTouchListeners() {
     
     // Prevent default touch behaviors on canvas
     canvas.addEventListener('touchstart', function(e) {
-      console.log('touchstart event fired, touches:', e.touches.length);
       e.preventDefault();
       if (e.touches.length > 0) {
         var rect = canvas.getBoundingClientRect();
@@ -37,12 +36,9 @@ function setupTouchListeners() {
           
           // Set a timeout to automatically reset touch state if touchend doesn't fire
           window._touchTimeout = setTimeout(function() {
-            console.log('TIMEOUT: Force resetting stuck touch state');
             window._inputActive = false;
             window._touchTimeout = null;
-          }, 2000); // 2 second timeout
-          
-          console.log('Touch start:', window._lastInputX, window._lastInputY, 'inputActive:', window._inputActive);
+          }, 500); // Much shorter 0.5 second timeout
         }
       }
     }, { passive: false });
@@ -58,14 +54,11 @@ function setupTouchListeners() {
           window._lastInputX = Math.round((e.touches[0].clientX - rect.left) * scaleX);
           window._lastInputY = Math.round((e.touches[0].clientY - rect.top) * scaleY);
           window._inputActive = true;
-          
-          console.log('Touch move:', window._lastInputX, window._lastInputY, 'inputActive:', window._inputActive);
         }
       }
     }, { passive: false });
     
-        canvas.addEventListener('touchend', function(e) {
-      console.log('touchend event fired');
+    canvas.addEventListener('touchend', function(e) {
       e.preventDefault();
       if (typeof window !== 'undefined') {
         // Clear the timeout since touchend fired properly
@@ -75,12 +68,11 @@ function setupTouchListeners() {
         }
         window._inputActive = false;
       }
-      console.log('Touch end, inputActive:', typeof window !== 'undefined' ? window._inputActive : 'undefined');
     }, { passive: false });
     
     canvas.addEventListener('touchcancel', function(e) {
       e.preventDefault();
-            if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         // Clear the timeout since touchcancel fired  
         if (window._touchTimeout) {
           clearTimeout(window._touchTimeout);
@@ -88,10 +80,9 @@ function setupTouchListeners() {
         }
         window._inputActive = false;
       }
-      console.log('Touch cancel, inputActive:', typeof window !== 'undefined' ? window._inputActive : 'undefined');
     }, { passive: false });
     
-    console.log('Touch event listeners added to canvas');
+
     return true;
   }
   return false;
@@ -172,13 +163,6 @@ var TruthByteLib = {
     return false;
   },
   
-  // Debug function to log current touch state
-  debug_touch_state: function() {
-    if (typeof window !== 'undefined') {
-      console.log('JS Touch State - X:', window._lastInputX, 'Y:', window._lastInputY, 'Active:', window._inputActive);
-    }
-  },
-  
   // Initialize authentication by fetching a JWT token
   init_auth: function(callback_ptr) {
     fetch("https://api.truthbyte.voidtalker.com/v1/session", {
@@ -198,8 +182,6 @@ var TruthByteLib = {
       // Store token and session ID globally
       _authToken = data.token;
       _sessionId = data.session_id;
-      
-      console.log('Authentication initialized successfully');
       
       // Call Zig callback with success (1)
       if (callback_ptr) {

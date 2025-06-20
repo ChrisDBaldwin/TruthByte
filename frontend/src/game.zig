@@ -147,12 +147,12 @@ fn getInputEvent(state: *GameState) ?InputEvent {
 
     // Check JavaScript touch state for more reliable touch detection on mobile
     const js_touch_active = if (builtin.target.os.tag == .emscripten) js.get_input_active() else false;
-    const effective_touch_active = touch_active or js_touch_active;
 
-    // Debug logging for touch state (only on state changes)
-    if (builtin.target.os.tag == .emscripten and effective_touch_active != state.last_touch_active) {
-        std.debug.print("Touch state change: raylib={}, js={}, effective={}, last={}\n", .{ touch_active, js_touch_active, effective_touch_active, state.last_touch_active });
-    }
+    // On WASM/mobile, prioritize JavaScript touch detection over Raylib since Raylib can get stuck
+    const effective_touch_active = if (builtin.target.os.tag == .emscripten)
+        js_touch_active // Use ONLY JavaScript touch detection on WASM
+    else
+        touch_active or js_touch_active; // Use both on native
 
     var event: ?InputEvent = null;
 
@@ -177,11 +177,6 @@ fn getInputEvent(state: *GameState) ?InputEvent {
             .position = actual_pos,
             .source = .touch,
         };
-
-        std.debug.print("Touch started at: {d}, {d}\n", .{ actual_pos.x, actual_pos.y });
-        if (builtin.target.os.tag == .emscripten) {
-            js.debug_touch_state();
-        }
     } else if (!effective_touch_active and state.last_touch_active) {
         // Touch ended - use last known JavaScript coordinates
         const js_x = if (builtin.target.os.tag == .emscripten) js.get_input_x() else 0;
@@ -198,8 +193,6 @@ fn getInputEvent(state: *GameState) ?InputEvent {
             .position = end_pos,
             .source = .touch,
         };
-
-        std.debug.print("Touch ended at: {d}, {d}\n", .{ end_pos.x, end_pos.y });
     }
 
     // If no touch input, handle mouse events
@@ -253,9 +246,6 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     extern fn propose_question(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
-    // Debug function
-    extern fn debug_touch_state() void;
-
     pub export fn alloc(size: usize) *u8 {
         return @ptrCast(std.heap.page_allocator.alloc(u8, size) catch unreachable);
     }
@@ -276,9 +266,6 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     }
 } else struct {
     // Provide stubs for native builds
-    pub fn debug_touch_state() void {
-        std.debug.print("debug_touch_state is not available in native build\n", .{});
-    }
 
     pub fn get_session_id() *const u8 {
         std.debug.print("get_session_id is not available in native build\n", .{});
