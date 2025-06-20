@@ -28,20 +28,59 @@ Resources:
         - Key: Project
           Value: TruthByte
 
+  # Separate table for tag indexing to support multiple tags per question
+  QuestionTagsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}-truthbyte-question-tags
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tag
+          AttributeType: S
+        - AttributeName: question_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tag
+          KeyType: HASH
+        - AttributeName: question_id
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: TruthByte
+
+  SubmittedQuestionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}-truthbyte-submitted-questions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: TruthByte
+
   AnswersTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub ${Environment}-truthbyte-answers
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: session_id
+        - AttributeName: user_id
           AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: N
+        - AttributeName: question_id
+          AttributeType: S
       KeySchema:
-        - AttributeName: session_id
+        - AttributeName: user_id
           KeyType: HASH
-        - AttributeName: timestamp
+        - AttributeName: question_id
           KeyType: RANGE
       Tags:
         - Key: Environment
@@ -82,6 +121,18 @@ Outputs:
     Export:
       Name: !Sub ${Environment}-QuestionsTableName
 
+  QuestionTagsTableName:
+    Description: Name of the question tags table
+    Value: !Ref QuestionTagsTable
+    Export:
+      Name: !Sub ${Environment}-QuestionTagsTableName
+
+  SubmittedQuestionsTableName:
+    Description: Name of the submitted questions table
+    Value: !Ref SubmittedQuestionsTable
+    Export:
+      Name: !Sub ${Environment}-SubmittedQuestionsTableName
+
   AnswersTableName:
     Description: Name of the answers table
     Value: !Ref AnswersTable
@@ -100,6 +151,12 @@ Outputs:
     Export:
       Name: !Sub ${Environment}-QuestionsTableArn
 
+  SubmittedQuestionsTableArn:
+    Description: ARN of the submitted questions table
+    Value: !GetAtt SubmittedQuestionsTable.Arn
+    Export:
+      Name: !Sub ${Environment}-SubmittedQuestionsTableArn
+
   AnswersTableArn:
     Description: ARN of the answers table
     Value: !GetAtt AnswersTable.Arn
@@ -110,4 +167,10 @@ Outputs:
     Description: ARN of the sessions table
     Value: !GetAtt SessionsTable.Arn
     Export:
-      Name: !Sub ${Environment}-SessionsTableArn 
+      Name: !Sub ${Environment}-SessionsTableArn
+
+  QuestionTagsTableArn:
+    Description: ARN of the question tags table
+    Value: !GetAtt QuestionTagsTable.Arn
+    Export:
+      Name: !Sub ${Environment}-QuestionTagsTableArn 

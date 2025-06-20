@@ -18,7 +18,8 @@ deploy/
 ├── artifacts/                    # Generated deployment files (gitignored)
 │   └── frontend/                 # Built WASM, JS, HTML files
 └── infra/
-    ├── dynamodb.yaml             # DynamoDB tables
+    ├── backend-s3.yaml           # S3 bucket for Lambda artifacts
+    ├── dynamodb.yaml             # DynamoDB tables (questions + tag mapping)
     ├── lambdas.yaml              # Lambda functions
     ├── api.yaml                  # API Gateway
     ├── frontend-s3.yaml          # S3 bucket for frontend hosting
@@ -75,18 +76,18 @@ cd deploy
 - **Static Assets**: `Cache-Control: max-age=3600` (1 hour caching)
 - **Content-Type**: Proper MIME types for all file types
 
-## Backend Deployment (In Progress)
+## Backend Deployment (Production Ready)
 
-Backend deployment scripts are available but the backend implementation is still in progress.
+The backend deployment creates a high-performance, tag-based architecture that avoids expensive table scans. All infrastructure is automatically created and configured for optimal performance.
 
 ### Usage
 
 ```bash
 # Bash
-./scripts/deploy-backend.sh --environment dev --artifact-bucket my-lambda-artifacts
+./scripts/deploy-backend.sh --environment dev
 
 # PowerShell
-.\scripts\deploy-backend.ps1 -Environment dev -ArtifactBucket my-lambda-artifacts
+.\scripts\deploy-backend.ps1 -Environment dev
 ```
 
 ## Master Deployment Scripts
@@ -100,7 +101,6 @@ The master deployment scripts can deploy backend, frontend, or both components.
 ./scripts/deploy.sh \
   --component all \
   --environment dev \
-  --artifact-bucket my-lambda-artifacts \
   --bucket my-website.com \
   --certificate-id YOUR_CERT_ID
 
@@ -121,7 +121,6 @@ The master deployment scripts can deploy backend, frontend, or both components.
 .\scripts\deploy.ps1 `
   -Component all `
   -Environment dev `
-  -ArtifactBucket my-lambda-artifacts `
   -Bucket my-website.com `
   -CertificateId YOUR_CERT_ID
 
@@ -145,7 +144,6 @@ The master deployment scripts can deploy backend, frontend, or both components.
 
 ### Backend Parameters
 - `--environment` / `-Environment`: Deployment environment (dev|prod) **[Required]**
-- `--artifact-bucket` / `-ArtifactBucket`: S3 bucket for Lambda deployment packages **[Required]**
 
 ### Frontend Parameters
 - `--bucket` / `-Bucket`: S3 bucket name for frontend hosting **[Required]**
@@ -259,7 +257,50 @@ The deployment scripts have been simplified and optimized:
 ## Current Status
 
 ✅ **Frontend Deployment**: Fully functional with mobile optimization  
-🟡 **Backend Deployment**: Scripts ready, backend implementation in progress  
+✅ **Backend Deployment**: Production-ready with tag-based architecture  
 ✅ **Mobile Support**: Complete touch input system with iOS Safari fixes  
 ✅ **AWS Integration**: S3 + CloudFront deployment working  
-✅ **Cross-Platform**: Bash and PowerShell scripts maintained 
+✅ **Cross-Platform**: Bash and PowerShell scripts maintained
+
+## Data Upload
+
+After deploying the backend infrastructure, upload your question data using the provided script:
+
+### Upload Questions to DynamoDB
+
+```bash
+# Upload questions with automatic tag processing
+python scripts/upload_questions.py --environment dev --file data/dev_with_ids.jsonl
+
+# For production environment
+python scripts/upload_questions.py --environment prod --file data/dev_with_ids.jsonl
+```
+
+### Data Processing Features
+
+- **Automatic Tag Enhancement**: Every question gets a `general` tag for universal queries
+- **Dual-Table Upload**: Populates both questions table and tag mapping table
+- **Batch Operations**: Efficient bulk upload using DynamoDB batch operations
+- **Progress Tracking**: Real-time upload progress and error reporting
+- **Smart Detection**: Automatically detects table schema and adapts upload strategy
+
+### Expected Data Format
+
+Questions should be in JSONL format with these fields:
+```json
+{
+  "id": "q001",
+  "question": "does ethanol take more energy make that produces", 
+  "title": "Ethanol fuel",
+  "passage": "All biomass goes through at least some of these steps...",
+  "answer": false,
+  "tags": ["geography", "literature", "science", "business"]
+}
+```
+
+### Performance Benefits
+
+- **No Table Scans**: All queries use efficient tag-based indexing
+- **Sub-second Queries**: Fast response times regardless of dataset size  
+- **Predictable Costs**: Consistent, low-cost operation
+- **High Throughput**: Supports concurrent requests without performance degradation 

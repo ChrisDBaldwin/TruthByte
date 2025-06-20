@@ -23,14 +23,14 @@ while [[ $# -gt 0 ]]; do
             REGION="$2"
             shift 2
             ;;
-        --certificate-id)
-            CERTIFICATE_ID="$2"
+        --frontend-certificate-id)
+            FRONTEND_CERTIFICATE_ID="$2"
             shift 2
             ;;
         --help)
             echo "TruthByte Frontend Deployment Script"
             echo ""
-            echo "Usage: $0 --bucket-name <bucket-name> [--region <aws-region>] [--certificate-id <cert-id>]"
+            echo "Usage: $0 --bucket-name <bucket-name> [--region <aws-region>] [--frontend-certificate-id <cert-id>]"
             echo ""
             echo "This script will:"
             echo "1. Build the Zig WebAssembly frontend"
@@ -155,12 +155,12 @@ echo "CloudFront OAI ID: $OAI_ID"
 # Deploy CloudFront distribution
 echo "Deploying CloudFront distribution..."
 
-if [ -n "$CERTIFICATE_ID" ]; then
-    echo "Using SSL certificate ID: $CERTIFICATE_ID"
+if [ -n "$FRONTEND_CERTIFICATE_ID" ]; then
+    echo "Using SSL certificate ID: $FRONTEND_CERTIFICATE_ID"
     aws cloudformation deploy \
         --template-file "../infra/cloudfront.yaml" \
         --stack-name "truthbyte-frontend-cloudfront" \
-        --parameter-overrides BucketName="$BUCKET_NAME" OAIId="$OAI_ID" AcmCertificateId="$CERTIFICATE_ID"
+        --parameter-overrides BucketName="$BUCKET_NAME" OAIId="$OAI_ID" AcmCertificateId="$FRONTEND_CERTIFICATE_ID"
 else
     echo "No SSL certificate ID provided, please provide one to enable HTTPS"
     exit 1

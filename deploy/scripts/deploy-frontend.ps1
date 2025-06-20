@@ -18,7 +18,7 @@ param(
     [string]$Region = "us-east-1",
     
     [Parameter(Mandatory=$true)]
-    [string]$CertificateId,
+    [string]$FrontendCertificateId,  # Certificate ID (not ARN) for CloudFront distribution
     
     [Parameter(Mandatory=$false)]
     [switch]$Help
@@ -27,7 +27,7 @@ param(
 if ($Help) {
     Write-Host "TruthByte Frontend Deployment Script"
     Write-Host ""
-    Write-Host "Usage: .\deploy-frontend.ps1 -BucketName <bucket-name> [-Region <aws-region>] [-CertificateId <cert-id>]"
+    Write-Host "Usage: .\deploy-frontend.ps1 -BucketName <bucket-name> [-Region <aws-region>] [-FrontendCertificateId <cert-id>]"
     Write-Host ""
     Write-Host "This script will:"
     Write-Host "1. Build the Zig WebAssembly frontend"
@@ -141,12 +141,12 @@ Write-Host "CloudFront OAI ID: $oaiId"
 # Deploy CloudFront distribution
 Write-Host "Deploying CloudFront distribution..."
 
-if ($CertificateId) {
-    Write-Host "Using SSL certificate ID: $CertificateId"
+if ($FrontendCertificateId) {
+    Write-Host "Using SSL certificate ID: $FrontendCertificateId"
     aws cloudformation deploy `
         --template-file "../infra/cloudfront.yaml" `
         --stack-name "truthbyte-frontend-cloudfront" `
-        --parameter-overrides BucketName="$BucketName" OAIId="$oaiId" AcmCertificateId="$CertificateId"
+        --parameter-overrides BucketName="$BucketName" OAIId="$oaiId" AcmCertificateId="$FrontendCertificateId"
 } else {
     Write-Error "No SSL certificate ID provided, please provide one to enable HTTPS"
     exit 1

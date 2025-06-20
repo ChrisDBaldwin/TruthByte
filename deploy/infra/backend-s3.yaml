@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 bucket for TruthByte backend Lambda artifacts'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Deployment environment (dev|prod)
+    AllowedValues:
+      - dev
+      - prod
+
+Resources:
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Environment}-truthbyte-lambda-artifacts"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+Outputs:
+  ArtifactsBucketName:
+    Description: 'S3 bucket name for Lambda artifacts'
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub "${Environment}-truthbyte-artifacts-bucket"
+
+  ArtifactsBucketArn:
+    Description: 'S3 bucket ARN for Lambda artifacts'
+    Value: !GetAtt ArtifactsBucket.Arn 

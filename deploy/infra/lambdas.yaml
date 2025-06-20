@@ -12,6 +12,10 @@ Parameters:
   ArtifactBucket:
     Type: String
     Description: S3 bucket for Lambda deployment packages
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: JWT secret key for token signing and verification
 
 Resources:
   FetchQuestionsFunction:
@@ -31,17 +35,23 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           LOG_LEVEL: INFO
-          QUESTIONS_TABLE: !ImportValue !Sub ${Environment}-QuestionsTableName
+          JWT_SECRET: !Ref JwtSecret
+          QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionsTableName
+          QUESTION_TAGS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionTagsTableName
 
   SubmitAnswerFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${Environment}-truthbyte-submit-answer
+      FunctionName: !Sub ${Environment}-truthbyte-submit-answers
       Handler: submit_answers.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref ArtifactBucket
-        S3Key: submit-answer.zip
+        S3Key: submit-answers.zip
       Runtime: python3.13
       Timeout: 30
       MemorySize: 256
@@ -50,8 +60,10 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           LOG_LEVEL: INFO
-          ANSWERS_TABLE: !ImportValue !Sub ${Environment}-AnswersTableName
-          SESSIONS_TABLE: !ImportValue !Sub ${Environment}-SessionsTableName
+          JWT_SECRET: !Ref JwtSecret
+          ANSWERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-AnswersTableName
 
   ProposeQuestionFunction:
     Type: AWS::Lambda::Function
@@ -70,7 +82,48 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           LOG_LEVEL: INFO
-          QUESTIONS_TABLE: !ImportValue !Sub ${Environment}-QuestionsTableName
+          JWT_SECRET: !Ref JwtSecret
+          SUBMITTED_QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-SubmittedQuestionsTableName
+
+  GetTokenFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-get-token
+      Handler: get_token.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: get-token.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+
+  AuthPingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-auth-ping
+      Handler: auth_ping.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: auth-ping.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -94,10 +147,18 @@ Resources:
                   - dynamodb:UpdateItem
                   - dynamodb:Query
                   - dynamodb:Scan
+                  - dynamodb:BatchGetItem
                 Resource:
-                  - !ImportValue !Sub ${Environment}-QuestionsTableArn
-                  - !ImportValue !Sub ${Environment}-AnswersTableArn
-                  - !ImportValue !Sub ${Environment}-SessionsTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-QuestionsTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-QuestionTagsTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-SubmittedQuestionsTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-AnswersTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-SessionsTableArn
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -122,4 +183,16 @@ Outputs:
     Description: ARN of the propose question Lambda function
     Value: !GetAtt ProposeQuestionFunction.Arn
     Export:
-      Name: !Sub ${Environment}-ProposeQuestionFunctionArn 
+      Name: !Sub ${Environment}-ProposeQuestionFunctionArn
+
+  GetTokenFunctionArn:
+    Description: ARN of the get token Lambda function
+    Value: !GetAtt GetTokenFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-GetTokenFunctionArn
+
+  AuthPingFunctionArn:
+    Description: ARN of the auth ping Lambda function
+    Value: !GetAtt AuthPingFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-AuthPingFunctionArn 

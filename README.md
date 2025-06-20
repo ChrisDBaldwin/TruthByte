@@ -77,14 +77,17 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 - User session tracking is planned (currently commented out)
 - Optional "Submit your own question" flow is planned
 
-🟡 **Backend (Python) — In Progress**
-- Project initialized, endpoints pending implementation
+🟢 **Backend (Python) — Production Ready**
+- **High-Performance Architecture**: Tag-based querying with zero table scans
+- **Dual-Table Design**: Optimized question storage and tag indexing
+- **Sub-second Response**: Fast, predictable query performance at scale
+- **Auto-Deployment**: Fully automated AWS infrastructure deployment
 - Provides:
-  - `GET /fetch-questions` → returns a randomized batch of questions, optionally filtered by tags
+  - `GET /fetch-questions` → returns randomized questions by tag (defaults to 'general')
   - `POST /answers` → receives user answers + timing, computes trust score
-  - `POST /submit-question` → saves user-submitted questions to a pending pool
-  - `POST /suggest-tags` and `POST /remove-tags` → tag management endpoints (planned)
-- Will integrate OpenTelemetry and support S3/DynamoDB/JSON storage
+  - `POST /submit-question` → saves user-submitted questions to pending pool
+  - Efficient DynamoDB integration with batch operations
+- Production features: CloudFormation infrastructure, automated S3 artifacts, Lambda packaging
 
 🟠 **Admin (Manual Review) — Manual Process**
 - No moderation dashboard yet
@@ -94,10 +97,27 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 ### Data Flow
 
 ```
-User → Frontend (WASM) → GET /questions
-                           ↑
+User → Frontend (WASM) → GET /questions?tag=science
+                           ↑ (tag-based, no scans)
      ↓ answers w/ timing  → POST /answers
      ↓ new question       → POST /submit-question
+```
+
+### Backend Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Questions     │    │  Question-Tags   │    │   API Gateway   │
+│     Table       │    │     Table        │    │   + Lambda      │
+├─────────────────┤    ├──────────────────┤    ├─────────────────┤
+│ id: "q001"      │    │ tag: "science"   │◄───┤ GET /questions  │
+│ question: "..." │    │ question_id:     │    │ ?tag=science    │
+│ answer: true    │    │   "q001"         │    │                 │
+│ tags: [...]     │    │                  │    │ Fast tag query  │
+│ title: "..."    │    │ tag: "general"   │    │ → Batch get IDs │
+│ passage: "..."  │    │ question_id:     │    │ → Random select │
+└─────────────────┘    │   "q001"         │    └─────────────────┘
+                       └──────────────────┘
 ```
 
 ## Mobile & Touch Support

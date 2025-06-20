@@ -1,30 +1,4 @@
-# Core
+# Runtime dependencies only
 boto3
 pydantic
-requests
-
-# Dev / Formatting / Linting
-black
-flake8
-isort
-mypy
-pre-commit
-
-# Testing
-pytest
-pytest-cov
-pytest-mock
-responses
-
-# Typing (if using mypy)
-types-requests
-types-boto3
-
-# Optional Speed Boosts / Helpers
-python-dotenv
-ujson
-
-# If building APIs
-# fastapi
-# uvicorn
-# aws-lambda-powertools
+pyjwt

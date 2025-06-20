@@ -9,6 +9,30 @@ Parameters:
       - dev
       - prod
     Description: Environment name
+  FetchQuestionsFunctionArn:
+    Type: String
+    Description: ARN of the fetch questions Lambda function
+  SubmitAnswerFunctionArn:
+    Type: String
+    Description: ARN of the submit answer Lambda function
+  ProposeQuestionFunctionArn:
+    Type: String
+    Description: ARN of the propose question Lambda function
+  GetTokenFunctionArn:
+    Type: String
+    Description: ARN of the get token Lambda function
+  AuthPingFunctionArn:
+    Type: String
+    Description: ARN of the auth ping Lambda function
+  CustomDomainName:
+    Type: String
+    Default: api.truthbyte.voidtalker.com
+    Description: Custom domain name for the API
+  ApiCertificateArn:
+    Type: String
+    Description: ARN of the SSL certificate for api.truthbyte.voidtalker.com (must be in us-east-1)
+
+
 
 Resources:
   ApiGateway:
@@ -61,7 +85,7 @@ Resources:
           - StatusCode: 200
             ResponseParameters:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
       MethodResponses:
         - StatusCode: 200
@@ -105,7 +129,7 @@ Resources:
           - StatusCode: 200
             ResponseParameters:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
       MethodResponses:
         - StatusCode: 200
@@ -149,8 +173,96 @@ Resources:
           - StatusCode: 200
             ResponseParameters:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  # Get Token Endpoint (/session)
+  SessionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResource
+      PathPart: session
+
+  SessionMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SessionResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTokenFunctionArn}/invocations
+
+  SessionCorsOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SessionResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  # Auth Ping Endpoint (/ping)
+  PingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResource
+      PathPart: ping
+
+  PingMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref PingResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthPingFunctionArn}/invocations
+
+  PingCorsOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref PingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
@@ -168,6 +280,10 @@ Resources:
       - SubmitAnswersCorsOptions
       - ProposeQuestionMethod
       - ProposeQuestionCorsOptions
+      - SessionMethod
+      - SessionCorsOptions
+      - PingMethod
+      - PingCorsOptions
     Properties:
       RestApiId: !Ref ApiGateway
 
@@ -183,7 +299,7 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !ImportValue !Sub ${Environment}-FetchQuestionsFunctionArn
+      FunctionName: !Ref FetchQuestionsFunctionArn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
 
@@ -191,7 +307,7 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !ImportValue !Sub ${Environment}-SubmitAnswerFunctionArn
+      FunctionName: !Ref SubmitAnswerFunctionArn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
 
@@ -199,13 +315,66 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !ImportValue !Sub ${Environment}-ProposeQuestionFunctionArn
+      FunctionName: !Ref ProposeQuestionFunctionArn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  GetTokenPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetTokenFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  AuthPingPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthPingFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  # Custom Domain
+  CustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref CustomDomainName
+      RegionalCertificateArn: !Ref ApiCertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  BasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn: ApiStage
+    Properties:
+      DomainName: !Ref CustomDomain
+      RestApiId: !Ref ApiGateway
+      Stage: !Ref Environment
 
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
     Export:
-      Name: !Sub ${Environment}-ApiEndpoint 
+      Name: !Sub ${Environment}-ApiEndpoint
+      
+  ApiGatewayId:
+    Description: API Gateway ID
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub ${Environment}-ApiGatewayId
+      
+  CustomDomainName:
+    Description: Custom domain name
+    Value: !Ref CustomDomainName
+    Export:
+      Name: !Sub ${Environment}-CustomDomainName
+      
+  DistributionDomainName:
+    Description: Regional domain name for custom domain mapping
+    Value: !GetAtt CustomDomain.RegionalDomainName
+    Export:
+      Name: !Sub ${Environment}-DistributionDomainName 
