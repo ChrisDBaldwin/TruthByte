@@ -24,8 +24,8 @@ const CURSOR_HEIGHT = 20;
 // --- UI Element Dimensions ---
 const COLOR_BUTTON_WIDTH = 80;
 const COLOR_BUTTON_HEIGHT = 40;
-const BOTTOM_BUTTON_WIDTH = 90;
-const BOTTOM_BUTTON_HEIGHT = 40;
+const BOTTOM_BUTTON_WIDTH = 110;
+const BOTTOM_BUTTON_HEIGHT = 45;
 const BOTTOM_BUTTON_GAP = 20;
 const INPUT_BOX_WIDTH = 400;
 const INPUT_BOX_HEIGHT = 40;
@@ -60,11 +60,11 @@ const UserSessionResponse = struct {
     token: []const u8 = "",
     trust: f32 = 0.0,
     invitable: bool = false,
-    responses: [10]QuestionResponse,
+    responses: [7]QuestionResponse,
     timestamp: i64,
 };
 
-const GameStateEnum = enum { Loading, Answering, Submitting, Finished };
+const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, Finished };
 
 const Question = struct {
     id: [:0]const u8, // Unique identifier
@@ -76,7 +76,7 @@ const Question = struct {
 };
 
 const Session = struct {
-    questions: [10]Question,
+    questions: [7]Question,
     current: usize = 0,
     correct: usize = 0,
     finished: bool = false,
@@ -101,7 +101,8 @@ pub const GameState = struct {
     bg_color: rl.Color = rl.Color{ .r = 200, .g = 215, .b = 235, .a = 255 },
     fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
-    game_state: GameStateEnum = .Loading,
+    game_state: GameStateEnum = .Authenticating,
+    auth_initialized: bool = false,
     session: Session = undefined,
     user_session: UserSessionResponse = UserSessionResponse{
         .responses = undefined,
@@ -120,7 +121,7 @@ pub const GameState = struct {
     last_mouse_pressed: bool = false,
     last_touch_active: bool = false,
     // Loading state
-    loading_message: [:0]const u8 = "Loading questions...",
+    loading_message: [:0]const u8 = "Connecting to server...",
     // PRNG
     prng: std.Random.DefaultPrng = undefined,
     last_screen_width: i32 = 0,
@@ -144,18 +145,29 @@ fn getInputEvent(state: *GameState) ?InputEvent {
     const touch_count = rl.getTouchPointCount();
     const touch_active = touch_count > 0;
 
+    // Check JavaScript touch state for more reliable touch detection on mobile
+    const js_touch_active = if (builtin.target.os.tag == .emscripten) js.get_input_active() else false;
+
+    // On WASM/mobile, prioritize JavaScript touch detection over Raylib since Raylib can get stuck
+    const effective_touch_active = if (builtin.target.os.tag == .emscripten)
+        js_touch_active // Use ONLY JavaScript touch detection on WASM
+    else
+        touch_active or js_touch_active; // Use both on native
+
     var event: ?InputEvent = null;
 
     // Handle touch input first (prioritize touch over mouse)
-    if (touch_active and !state.last_touch_active) {
+    if (effective_touch_active and !state.last_touch_active) {
         // Touch started - use JavaScript coordinates (workaround for raylib-zig WASM issue)
         const js_x = if (builtin.target.os.tag == .emscripten) js.get_input_x() else 0;
         const js_y = if (builtin.target.os.tag == .emscripten) js.get_input_y() else 0;
 
-        // Use JavaScript coordinates if available, otherwise fallback to center of screen
+        // Always use JavaScript coordinates for touch input if available
         const screen_size = get_canvas_size();
-        const actual_pos = if (js_x > 0 or js_y > 0)
+        const actual_pos = if (js_x != 0 or js_y != 0)
             rl.Vector2{ .x = @as(f32, @floatFromInt(js_x)), .y = @as(f32, @floatFromInt(js_y)) }
+        else if (touch_count > 0)
+            rl.getTouchPosition(0) // Fallback to raylib touch position
         else
             rl.Vector2{ .x = @as(f32, @floatFromInt(@divTrunc(screen_size.w, 2))), .y = @as(f32, @floatFromInt(@divTrunc(screen_size.h, 2))) };
 
@@ -165,19 +177,26 @@ fn getInputEvent(state: *GameState) ?InputEvent {
             .position = actual_pos,
             .source = .touch,
         };
-    } else if (!touch_active and state.last_touch_active) {
-        // Touch ended - use last known mouse position as fallback
-        // (we can't get touch position after touch ends)
+    } else if (!effective_touch_active and state.last_touch_active) {
+        // Touch ended - use last known JavaScript coordinates
+        const js_x = if (builtin.target.os.tag == .emscripten) js.get_input_x() else 0;
+        const js_y = if (builtin.target.os.tag == .emscripten) js.get_input_y() else 0;
+
+        const end_pos = if (js_x != 0 or js_y != 0)
+            rl.Vector2{ .x = @as(f32, @floatFromInt(js_x)), .y = @as(f32, @floatFromInt(js_y)) }
+        else
+            rl.getMousePosition(); // Fallback position
+
         event = InputEvent{
             .pressed = false,
             .released = true,
-            .position = rl.getMousePosition(), // Fallback position
+            .position = end_pos,
             .source = .touch,
         };
     }
 
     // If no touch input, handle mouse events
-    if (event == null and !touch_active) {
+    if (event == null and !effective_touch_active) {
         if (mouse_pressed and !state.last_mouse_pressed) {
             // Mouse pressed
             event = InputEvent{
@@ -199,7 +218,7 @@ fn getInputEvent(state: *GameState) ?InputEvent {
 
     // Update state tracking
     state.last_mouse_pressed = mouse_pressed;
-    state.last_touch_active = touch_active;
+    state.last_touch_active = effective_touch_active;
 
     return event;
 }
@@ -217,6 +236,10 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     extern fn get_input_x() i32;
     extern fn get_input_y() i32;
     extern fn get_input_active() bool;
+
+    // Authentication functions
+    extern fn init_auth(callback_ptr: *const fn (success: i32) callconv(.C) void) void;
+    extern fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
     // API functions
     extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
@@ -243,6 +266,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     }
 } else struct {
     // Provide stubs for native builds
+
     pub fn get_session_id() *const u8 {
         std.debug.print("get_session_id is not available in native build\n", .{});
         return "1234567890".ptr;
@@ -287,6 +311,17 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
 
     pub fn get_input_active() bool {
         return false;
+    }
+
+    // Stub authentication functions for native builds
+    pub fn init_auth(callback_ptr: *const fn (success: i32) callconv(.C) void) void {
+        _ = callback_ptr;
+        std.debug.print("init_auth is not available in native build\n", .{});
+    }
+
+    pub fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = callback_ptr;
+        std.debug.print("auth_ping is not available in native build\n", .{});
     }
 
     // Stub API functions for native builds
@@ -385,6 +420,23 @@ fn randomPalette(state: *GameState) Palette {
     return state.palettes[idx];
 }
 
+fn startAuthentication(state: *GameState) void {
+    state.game_state = .Authenticating;
+    state.loading_message = "Connecting to server...";
+
+    // Set global state for callback
+    g_state = state;
+
+    // Initialize authentication
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        js.init_auth(on_auth_complete);
+    } else {
+        // For native builds, skip auth and go to loading
+        state.auth_initialized = true;
+        startSession(state);
+    }
+}
+
 fn startSession(state: *GameState) void {
     state.game_state = .Loading;
     state.loading_message = "Loading questions...";
@@ -394,7 +446,7 @@ fn startSession(state: *GameState) void {
 
     // Call fetch_questions API
     if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
-        js.fetch_questions(10, null, 0, on_questions_received);
+        js.fetch_questions(7, null, 0, on_questions_received);
     } else {
         // For native builds, use fallback immediately
         initSessionWithFallback(state);
@@ -406,7 +458,7 @@ fn currentResponse(state: *GameState) *QuestionResponse {
 }
 
 fn calcTrustScore(state: *GameState) f32 {
-    return @as(f32, @floatFromInt(state.session.correct)) / 10.0;
+    return @as(f32, @floatFromInt(state.session.correct)) / 7.0;
 }
 
 fn showInviteModal() void {
@@ -414,6 +466,8 @@ fn showInviteModal() void {
 }
 
 fn submitResponseBatch(user_session_response: *UserSessionResponse) void {
+    std.debug.print("🚀 submitResponseBatch called!\n", .{});
+
     user_session_response.session_id = js.get_session_id_slice();
     user_session_response.token = js.get_token_slice();
     user_session_response.trust = user_session_response.trust;
@@ -421,14 +475,47 @@ fn submitResponseBatch(user_session_response: *UserSessionResponse) void {
     user_session_response.responses = user_session_response.responses;
     user_session_response.timestamp = std.time.timestamp();
 
-    std.debug.print("Submitting session: session_id: {s}\n token: {s}\n timestamp: {d}\n responses: {any}\n trust: {d}\n invitable: {}\n", .{
+    std.debug.print("📤 Submitting session:\n  session_id: {s}\n  token: {s}\n  timestamp: {d}\n  trust: {d}\n  invitable: {}\n", .{
         user_session_response.session_id,
         user_session_response.token,
         user_session_response.timestamp,
-        user_session_response.responses,
         user_session_response.trust,
         user_session_response.invitable,
     });
+
+    // Convert responses to the format expected by the lambda (list of answers with user_id)
+    // The lambda expects: [{"user_id": str, "question_id": str, "answer": bool, "timestamp": number}]
+    var answers_for_api: [7]struct {
+        user_id: []const u8,
+        question_id: []const u8,
+        answer: ?bool,
+        timestamp: i64,
+    } = undefined;
+
+    var i: usize = 0;
+    while (i < 7) : (i += 1) {
+        answers_for_api[i] = .{
+            .user_id = user_session_response.session_id,
+            .question_id = user_session_response.responses[i].question_id,
+            .answer = user_session_response.responses[i].answer,
+            .timestamp = user_session_response.responses[i].start_time,
+        };
+    }
+
+    // Serialize to JSON using a fixed buffer allocator for better memory control
+    var json_buffer: [16384]u8 = undefined; // 16KB buffer
+    var fba = std.heap.FixedBufferAllocator.init(&json_buffer);
+    const allocator = fba.allocator();
+
+    const json_str = std.json.stringifyAlloc(allocator, answers_for_api, .{}) catch |err| {
+        std.debug.print("❌ Failed to serialize response to JSON: {}\n", .{err});
+        return;
+    };
+
+    std.debug.print("📝 JSON payload: {s}\n", .{json_str});
+    std.debug.print("🌐 Calling js.submit_answers...\n", .{});
+
+    js.submit_answers(json_str.ptr, json_str.len, on_submit_complete);
 }
 
 pub fn get_canvas_size() struct { w: i32, h: i32 } {
@@ -452,7 +539,7 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
     // Set global state pointer for callbacks
     g_state = state;
 
-    startSession(state);
+    startAuthentication(state);
     state.input_active = false;
     state.input_len = 0;
     state.input_buffer[0] = 0;
@@ -494,6 +581,11 @@ pub export fn update(state: *GameState) callconv(.C) void {
     const button_rect_false = raylib.Rectangle{ .x = buttons_x + button_w + BUTTON_GAP, .y = @as(f32, @floatFromInt(buttons_y)), .width = button_w, .height = button_h };
     const confirm_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
     const confirm_rect = raylib.Rectangle{ .x = confirm_x, .y = @as(f32, @floatFromInt(confirm_button_y)), .width = confirm_w, .height = confirm_h };
+
+    // Continue button for Finished state (positioned below score)
+    const continue_button_y = question_y + MEDIUM_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING;
+    const continue_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
+    const continue_rect = raylib.Rectangle{ .x = continue_x, .y = @as(f32, @floatFromInt(continue_button_y)), .width = confirm_w, .height = confirm_h };
 
     // COLOR button in top right
     const randomize_btn_x = @as(f32, @floatFromInt(screen_width - COLOR_BUTTON_WIDTH - MARGIN));
@@ -538,21 +630,25 @@ pub export fn update(state: *GameState) callconv(.C) void {
             r.duration = @as(f64, @floatFromInt(now - r.start_time));
             if (state.response.answer == state.session.questions[state.session.current].answer) state.session.correct += 1;
             state.session.current += 1;
-            if (state.session.current >= 10) {
+            if (state.session.current >= 7) {
+                std.debug.print("🏁 Game completed! Transitioning to Finished state...\n", .{});
                 state.session.finished = true;
                 state.game_state = .Finished;
                 state.user_session.trust = calcTrustScore(state);
                 state.user_session.invitable = state.user_session.trust >= 0.85;
+                std.debug.print("📊 Trust score calculated: {d}\n", .{state.user_session.trust});
                 submitResponseBatch(&state.user_session);
                 if (state.user_session.trust >= 0.85 and !state.invited_shown) {
                     showInviteModal();
                     state.invited_shown = true;
-                    // Temporarily disable JS interop to test alignment issue
-                    // js.set_invited_shown(true);
+                    js.set_invited_shown(true);
                 }
             }
             state.response.answer = null;
             state.selected = null;
+        } else if (state.game_state == .Finished and raylib.checkCollisionPointRec(pos, continue_rect)) {
+            // Continue button clicked - start a new session
+            startSession(state);
         } else if (raylib.checkCollisionPointRec(pos, randomize_btn)) {
             const new_pal = randomPalette(state);
             state.bg_color = new_pal.bg;
@@ -574,12 +670,12 @@ pub export fn update(state: *GameState) callconv(.C) void {
         state.input_buffer[state.input_len] = 0;
     }
     // Per-question timer start
-    if (state.game_state == .Answering and state.session.current < 10 and currentResponse(state).start_time == 0) {
+    if (state.game_state == .Answering and state.session.current < 7 and currentResponse(state).start_time == 0) {
         currentResponse(state).start_time = std.time.timestamp();
     }
 
     // Don't process input during loading
-    if (state.game_state == .Loading) {
+    if (state.game_state == .Loading or state.game_state == .Authenticating) {
         return;
     }
 }
@@ -601,7 +697,7 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     const buttons_y = question_y + LARGE_FONT_SIZE + ELEMENT_SPACING;
     const confirm_button_y = buttons_y + button_h + ELEMENT_SPACING;
 
-    if (state.game_state == .Loading) {
+    if (state.game_state == .Loading or state.game_state == .Authenticating) {
         // Loading screen
         const loading_width = raylib.measureText(state.loading_message, LARGE_FONT_SIZE);
         raylib.drawText(state.loading_message, @divTrunc((screen_width - loading_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
@@ -647,11 +743,18 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     } else if (state.game_state == .Finished) {
         const thank_width = raylib.measureText("Thank you!", LARGE_FONT_SIZE);
         raylib.drawText("Thank you!", @divTrunc((screen_width - thank_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
+
         // Use a simpler approach to avoid WASM memory issues
         var score_buf: [32]u8 = undefined;
-        const score_str = std.fmt.bufPrintZ(&score_buf, "Score: {}/10", .{state.session.correct}) catch "Score: ?";
+        const score_str = std.fmt.bufPrintZ(&score_buf, "Score: {}/7", .{state.session.correct}) catch "Score: ?";
         const score_width = raylib.measureText(score_str, LARGE_FONT_SIZE);
         raylib.drawText(score_str, @divTrunc((screen_width - score_width), 2), question_y + MEDIUM_SPACING, LARGE_FONT_SIZE, state.fg_color);
+
+        // Continue button for Finished state (positioned below score)
+        const continue_button_y = question_y + MEDIUM_SPACING + LARGE_FONT_SIZE + ELEMENT_SPACING;
+        const continue_x = @as(f32, @floatFromInt(@divTrunc((screen_width - confirm_w), 2)));
+        raylib.drawRectangle(@as(i32, @intFromFloat(continue_x)), continue_button_y, @as(i32, @intFromFloat(confirm_w)), @as(i32, @intFromFloat(confirm_h)), accent);
+        raylib.drawText("CONTINUE", @as(i32, @intFromFloat(continue_x)) + CONFIRM_TEXT_OFFSET_X, continue_button_y + CONFIRM_TEXT_OFFSET_Y, MEDIUM_FONT_SIZE, .white);
     } else if (state.game_state == .Submitting) {
         const submit_width = raylib.measureText("Submit your own question!", LARGE_FONT_SIZE);
         raylib.drawText("Submit your own question!", @divTrunc((screen_width - submit_width), 2), question_y, LARGE_FONT_SIZE, state.fg_color);
@@ -682,9 +785,10 @@ pub export fn draw(state: *GameState) callconv(.C) void {
     // SUBMIT and ANSWER buttons in bottom right
     const bottom_btn_y = @as(f32, @floatFromInt(screen_height - BOTTOM_BUTTON_HEIGHT - MARGIN));
     const answer_btn_x = @as(f32, @floatFromInt(screen_width - BOTTOM_BUTTON_WIDTH - MARGIN));
-    const submit_btn_x = answer_btn_x - BOTTOM_BUTTON_WIDTH - BOTTOM_BUTTON_GAP;
-    raylib.drawRectangleRec(rl.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.fg_color);
-    raylib.drawText("SUBMIT", @as(i32, @intFromFloat(submit_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.bg_color);
+    // TODO: Implement trust threshold for submit button
+    // const submit_btn_x = answer_btn_x - BOTTOM_BUTTON_WIDTH - BOTTOM_BUTTON_GAP;
+    // raylib.drawRectangleRec(rl.Rectangle{ .x = submit_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.fg_color);
+    // raylib.drawText("SUBMIT", @as(i32, @intFromFloat(submit_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.bg_color);
     raylib.drawRectangleRec(rl.Rectangle{ .x = answer_btn_x, .y = bottom_btn_y, .width = BOTTOM_BUTTON_WIDTH, .height = BOTTOM_BUTTON_HEIGHT }, state.fg_color);
     raylib.drawText("ANSWER", @as(i32, @intFromFloat(answer_btn_x)) + TEXT_PADDING, @as(i32, @intFromFloat(bottom_btn_y)) + TEXT_PADDING, SMALL_FONT_SIZE, state.bg_color);
 
@@ -705,6 +809,39 @@ pub export fn stateSize() callconv(.C) usize {
 }
 
 // Callback function for fetch_questions API response
+// Callback function for authentication initialization
+export fn on_auth_complete(success: i32) callconv(.C) void {
+    if (g_state == null) return;
+    const state = g_state.?;
+
+    if (success == 1) {
+        // Authentication successful
+        std.debug.print("✅ Authentication successful!\n", .{});
+        state.auth_initialized = true;
+        // Now load questions
+        startSession(state);
+    } else {
+        // Authentication failed
+        std.debug.print("❌ Authentication failed!\n", .{});
+        state.loading_message = "Authentication failed. Using offline mode.";
+        state.auth_initialized = false;
+        // Use fallback questions without authentication
+        initSessionWithFallback(state);
+    }
+}
+
+// Callback function for submit_answers API response
+export fn on_submit_complete(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
+    if (g_state == null) return;
+    if (success == 1) {
+        std.debug.print("Answers submitted successfully: {}\n", .{success});
+    } else {
+        const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
+        std.debug.print("Failed to submit answers: {s}\n", .{error_msg});
+    }
+}
+
+// Callback function for fetch_questions API response
 export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
     if (g_state == null) return;
     const state = g_state.?;
@@ -720,29 +857,149 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
     }
 
     // Parse JSON response
-    const json_str = data_ptr[0..data_len];
+    std.debug.print("Raw data_len parameter: {}\n", .{data_len});
+    // JavaScript adds +1 for null terminator, but JSON parser doesn't want that
+    const actual_len = if (data_len > 0 and data_ptr[data_len - 1] == 0) data_len - 1 else data_len;
+    const json_str = data_ptr[0..actual_len];
+    std.debug.print("Adjusted JSON string length: {}\n", .{json_str.len});
     std.debug.print("Received questions JSON: {s}\n", .{json_str});
 
-    // For now, use fallback questions until we implement JSON parsing
-    // TODO: Parse JSON and extract questions
-    state.loading_message = "Questions loaded!";
-    initSessionWithFallback(state);
+    // Parse JSON and create questions from API response
+    if (parseQuestionsFromJson(state, json_str)) |parsed_questions| {
+        state.loading_message = "Questions loaded!";
+        initSessionWithParsedQuestions(state, parsed_questions);
+    } else {
+        // JSON parsing failed, use fallback
+        std.debug.print("Failed to parse JSON, using fallback questions\n", .{});
+        state.loading_message = "Failed to parse questions. Using fallback.";
+        initSessionWithFallback(state);
+    }
 }
 
-fn initSessionWithFallback(state: *GameState) void {
+// JSON structs for API response deserialization
+const QuestionJSON = struct {
+    id: []const u8,
+    question: []const u8,
+    title: []const u8 = "",
+    passage: []const u8 = "",
+    answer: bool,
+    tags: [][]const u8 = &.{},
+
+    pub fn toQuestion(self: QuestionJSON, allocator: std.mem.Allocator) !Question {
+        // Use allocator to create proper null-terminated strings
+        const id_copy = try allocator.dupeZ(u8, self.id);
+        const question_copy = try allocator.dupeZ(u8, self.question);
+        const title_copy = try allocator.dupeZ(u8, self.title);
+        const passage_copy = try allocator.dupeZ(u8, self.passage);
+
+        std.debug.print("Converted question: '{s}'\n", .{question_copy});
+
+        return Question{
+            .id = id_copy,
+            .question = question_copy,
+            .title = title_copy,
+            .passage = passage_copy,
+            .answer = self.answer,
+            .tags = &.{}, // TODO: Convert tags if needed
+        };
+    }
+};
+
+const APIResponseJSON = struct {
+    questions: []QuestionJSON,
+    count: u32,
+    tag: []const u8 = "general",
+    requested_count: u32,
+};
+
+// JSON parsing function using struct-based deserialization
+fn parseQuestionsFromJson(state: *GameState, json_str: []const u8) ?[7]Question {
+    _ = state; // Parameter not used in parsing logic
+
+    var backing_buffer: [16384]u8 = undefined; // 16KB buffer for JSON parsing, tune as needed
+    var fba = std.heap.FixedBufferAllocator.init(&backing_buffer);
+    const allocator = fba.allocator();
+
+    // Parse JSON into struct
+    const parsed = std.json.parseFromSlice(APIResponseJSON, allocator, json_str, .{}) catch |err| {
+        std.debug.print("Failed to parse JSON: {}\n", .{err});
+        std.debug.print("JSON length: {}\n", .{json_str.len});
+        std.debug.print("JSON preview: {s}\n", .{json_str[0..@min(json_str.len, 300)]});
+        return null;
+    };
+    defer parsed.deinit();
+
+    const response = parsed.value;
+    std.debug.print("✅ JSON parsed successfully! Found {} questions\n", .{response.questions.len});
+    var questions: [7]Question = undefined;
+    var question_count: usize = 0;
+
+    // Convert JSON questions to internal Question structs
+    for (response.questions) |question_json| {
+        if (question_count >= 7) break;
+
+        // Convert using allocator method
+        questions[question_count] = question_json.toQuestion(allocator) catch {
+            std.debug.print("Failed to convert question {s}\n", .{question_json.id});
+            continue;
+        };
+
+        question_count += 1;
+    }
+
+    // Fill remaining slots with fallback questions if needed
+    while (question_count < 7) {
+        const fallback_idx = question_count % question_pool.len;
+        questions[question_count] = question_pool[fallback_idx];
+        question_count += 1;
+    }
+
+    if (question_count > 0) {
+        return questions;
+    } else {
+        return null;
+    }
+}
+
+// Initialize session with parsed questions from API
+fn initSessionWithParsedQuestions(state: *GameState, questions: [7]Question) void {
     state.session = Session{
-        .questions = question_pool,
+        .questions = questions,
         .current = 0,
         .correct = 0,
         .finished = false,
     };
     state.user_session.timestamp = std.time.timestamp();
-    state.user_session.session_id = "dummy-session";
-    state.user_session.token = "dummy-token";
+    state.user_session.session_id = js.get_session_id_slice();
+    state.user_session.token = js.get_token_slice();
     state.user_session.trust = state.user_trust;
     state.user_session.invitable = false;
     var i: usize = 0;
-    while (i < 10) : (i += 1) {
+    while (i < 7) : (i += 1) {
+        state.user_session.responses[i] = QuestionResponse{
+            .question_id = state.session.questions[i].id,
+            .answer = null,
+            .start_time = 0,
+            .duration = 0.0,
+        };
+    }
+    state.game_state = .Answering;
+}
+
+fn initSessionWithFallback(state: *GameState) void {
+    state.session = Session{
+        .questions = question_pool[0..7].*,
+        .current = 0,
+        .correct = 0,
+        .finished = false,
+    };
+    state.user_session.timestamp = std.time.timestamp();
+    state.user_session.session_id = js.get_session_id_slice();
+    state.user_session.token = js.get_token_slice();
+    state.user_session.trust = state.user_trust;
+    state.user_session.invitable = false;
+    var i: usize = 0;
+    while (i < 7) : (i += 1) {
         state.user_session.responses[i] = QuestionResponse{
             .question_id = state.session.questions[i].id,
             .answer = null,

@@ -4,14 +4,6 @@ A minimal Zig+WASM game that crowdsources human truth judgments to build better 
 
 **🎮 [Play Now: truthbyte.voidtalker.com](https://truthbyte.voidtalker.com)**
 
-## 📚 Complete Documentation
-
-**For comprehensive documentation, see the [`docs/`](docs/) directory:**
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - Complete system design and technical overview
-- **[API Reference](docs/API_REFERENCE.md)** - All endpoints, authentication, and data models
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Infrastructure setup and deployment procedures
-- **[AI Agent Specs](docs/AGENTIC_SPECS.md)** - Specifications for AI coding assistants
-
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Project Overview](#project-overview)
