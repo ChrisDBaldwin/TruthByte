@@ -225,15 +225,13 @@ var TruthByteLib = {
     var token = _authToken;
     return lengthBytesUTF8(token);
   },
-
-
   
   get_invited_shown: function () {
     return 0;
   },
 
   set_invited_shown: function(val) {
-    console.log("invited shown:", !!val);
+    // ToDo: Implement this
   },
 
   // Fetch questions from the backend
@@ -302,18 +300,13 @@ var TruthByteLib = {
   // Submit answers to the backend
   // Parameters: answers_json_ptr, answers_json_len, callback_ptr
   submit_answers: function(answers_json_ptr, answers_json_len, callback_ptr) {
-    console.log('🌐 submit_answers called with:', { answers_json_len, callback_ptr });
-    
     var answersJson = UTF8ToString(answers_json_ptr, answers_json_len);
-    console.log('📝 Received JSON:', answersJson);
     
     var answers;
     
     try {
       answers = JSON.parse(answersJson);
-      console.log('✅ JSON parsed successfully:', answers);
     } catch (e) {
-      console.error('❌ Invalid JSON for answers:', e);
       var errorStr = 'Invalid JSON format';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);
@@ -330,14 +323,7 @@ var TruthByteLib = {
     // Add Authorization header if we have a token
     if (_authToken) {
       headers['Authorization'] = 'Bearer ' + _authToken;
-      console.log('🔐 Using auth token:', _authToken.substring(0, 20) + '...');
-    } else {
-      console.warn('⚠️ No auth token available');
     }
-    
-    console.log('🚀 Making POST request to /v1/submit-answers');
-    console.log('📤 Headers:', headers);
-    console.log('📤 Body:', JSON.stringify(answers));
     
     fetch("https://api.truthbyte.voidtalker.com/v1/submit-answers", {
       method: 'POST',
@@ -346,14 +332,12 @@ var TruthByteLib = {
       body: JSON.stringify(answers)
     })
     .then(response => {
-      console.log('📨 Response received:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       return response.json();
     })
     .then(data => {
-      console.log('✅ Submit answers successful:', data);
       // Convert response to JSON string and pass to Zig callback
       var jsonStr = JSON.stringify(data);
       var len = lengthBytesUTF8(jsonStr) + 1;
@@ -365,7 +349,6 @@ var TruthByteLib = {
       _free(ptr);
     })
     .catch(error => {
-      console.error('❌ Submit answers error:', error);
       var errorStr = error.message || 'Unknown error';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);
@@ -386,7 +369,6 @@ var TruthByteLib = {
     try {
       question = JSON.parse(questionJson);
     } catch (e) {
-      console.error('Invalid JSON for question:', e);
       var errorStr = 'Invalid JSON format';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);
@@ -429,7 +411,6 @@ var TruthByteLib = {
       _free(ptr);
     })
     .catch(error => {
-      console.error('Propose question error:', error);
       var errorStr = error.message || 'Unknown error';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);
@@ -476,7 +457,6 @@ var TruthByteLib = {
       _free(ptr);
     })
     .catch(error => {
-      console.error('Auth ping error:', error);
       var errorStr = error.message || 'Unknown error';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);
