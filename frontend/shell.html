@@ -83,19 +83,14 @@
             canvas.width = width;
             canvas.height = height;
         }
-        
-        // Enhanced mobile event handling
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('load', resizeCanvas);
         window.addEventListener('orientationchange', function() {
             setTimeout(resizeCanvas, 100); // Delay to allow orientation change to complete
         });
-        
-        // Visual viewport support for mobile browsers
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', resizeCanvas);
         }
-        
         resizeCanvas();
         
         // Enhanced touch event handling for game input

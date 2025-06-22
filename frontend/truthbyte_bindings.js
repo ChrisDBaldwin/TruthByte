@@ -165,6 +165,7 @@ var TruthByteLib = {
   
   // Initialize authentication by fetching a JWT token
   init_auth: function(callback_ptr) {
+    console.log("🌐 JavaScript init_auth called");
     fetch("https://api.truthbyte.voidtalker.com/v1/session", {
       method: 'GET',
       mode: 'cors',
@@ -179,18 +180,21 @@ var TruthByteLib = {
       return response.json();
     })
     .then(data => {
+      console.log("✅ Authentication response:", data);
       // Store token and session ID globally
       _authToken = data.token;
       _sessionId = data.session_id;
       
+      console.log("🔔 Calling Zig auth callback with success");
       // Call Zig callback with success (1)
       if (callback_ptr) {
         dynCall_vi(callback_ptr, 1);
       }
     })
     .catch(error => {
-      console.error('Authentication initialization failed:', error);
+      console.error('❌ Authentication initialization failed:', error);
       
+      console.log("🔔 Calling Zig auth callback with failure");
       // Call Zig callback with failure (0)
       if (callback_ptr) {
         dynCall_vi(callback_ptr, 0);
@@ -237,6 +241,7 @@ var TruthByteLib = {
   // Fetch questions from the backend
   // Parameters: num_questions (optional), tag (optional), callback_ptr
   fetch_questions: function(num_questions, tag_ptr, tag_len, callback_ptr) {
+    console.log("🌐 JavaScript fetch_questions called");
     var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
     var params = new URLSearchParams();
     
@@ -274,18 +279,20 @@ var TruthByteLib = {
       return response.json();
     })
     .then(data => {
+      console.log("✅ Questions response:", data);
       // Convert response to JSON string and pass to Zig callback
       var jsonStr = JSON.stringify(data);
       var len = lengthBytesUTF8(jsonStr) + 1;
       var ptr = _malloc(len);
       stringToUTF8(jsonStr, ptr, len);
       
+      console.log("🔔 Calling Zig questions callback with success");
       // Call Zig callback with success (1), data pointer, and length
       dynCall_viii(callback_ptr, 1, ptr, len);
       _free(ptr);
     })
     .catch(error => {
-      console.error('Fetch questions error:', error);
+      console.error('❌ Fetch questions error:', error);
       var errorStr = error.message || 'Unknown error';
       var len = lengthBytesUTF8(errorStr) + 1;
       var ptr = _malloc(len);

@@ -1,7 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
 
-// --- Layout Constants ---
+// --- Layout Constants (deprecated - now using responsive system) ---
+// These constants are kept for compatibility with existing UI element sizing
 pub const MARGIN = 24;
 pub const LARGE_FONT_SIZE = 32;
 pub const MEDIUM_FONT_SIZE = 24;
@@ -99,7 +100,9 @@ pub const GameState = struct {
         .timestamp = 0,
     },
     user_trust: f32 = 0.0,
+    sessions_completed: u32 = 0,
     invited_shown: bool = false,
+    loading_start_time: i64 = 0,
     // UI state
     input_active: bool = false,
     input_buffer: [256]u8 = undefined,
