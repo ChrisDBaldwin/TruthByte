@@ -68,16 +68,18 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 
 ### System Components
 
-🟢 **Frontend (WASM/Zig) — Working**
+🟢 **Frontend (WASM/Zig)**
+- **Clean Separation**: Types, utilities, input, API, rendering, and game loop modules
 - Compiles to WASM and renders the quiz UI in the browser
 - **Full mobile touch support** with iOS Safari optimizations
 - Loads questions, displays passages, and tracks response times per question
 - Makes API calls to the backend for fetching questions and submitting answers
 - **Cross-platform input system** supporting mouse, touch, and keyboard
+- **Easy UI Development**: All rendering logic isolated in `render.zig` for simple redesigns
 - User session tracking is planned (currently commented out)
 - Optional "Submit your own question" flow is planned
 
-🟢 **Backend (Python) — Production Ready**
+🟢 **Backend (Python)**
 - **High-Performance Architecture**: Tag-based querying with zero table scans
 - **Dual-Table Design**: Optimized question storage and tag indexing
 - **Sub-second Response**: Fast, predictable query performance at scale

@@ -11,7 +11,7 @@ This directory contains all project documentation, specifications, and guides or
 
 ### Component Documentation  
 - **[`BACKEND.md`](BACKEND.md)** - Python Lambda backend architecture and development
-- **[`FRONTEND.md`](FRONTEND.md)** - Zig/WASM frontend development and build system
+- **[`FRONTEND.md`](FRONTEND.md)** - Zig/WASM frontend with modular architecture
 - **[`DATABASE.md`](DATABASE.md)** - DynamoDB schema and data management
 - **[`DEPLOYMENT.md`](DEPLOYMENT.md)** - Infrastructure deployment and DevOps
 

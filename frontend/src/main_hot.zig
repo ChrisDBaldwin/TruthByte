@@ -1,7 +1,7 @@
 const rl = @import("raylib");
 const std = @import("std");
 const builtin = @import("builtin");
-const game = @import("game.zig");
+const utils = @import("utils.zig");
 
 const LIB_PATH = "./zig-out/bin/"; // ./zig-out/lib/ for non-windows
 const LIB_FILENAME = "game";
@@ -31,15 +31,15 @@ pub fn main() !void {
     var allocator = arena.allocator();
 
     // Don't use fullscreen mode for better mobile compatibility
-    const size = game.get_canvas_size();
+    const size = utils.get_canvas_size();
     rl.initWindow(size.w, size.h, "TruthByte");
     std.debug.print("Screen resolution (from canvas): {}x{}\n", .{ size.w, size.h });
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
     // Confirm rendering resolution
-    const screen_width = game.get_canvas_size().w;
-    const screen_height = game.get_canvas_size().h;
+    const screen_width = utils.get_canvas_size().w;
+    const screen_height = utils.get_canvas_size().h;
     std.debug.print("Screen resolution: {}x{}\n", .{ screen_width, screen_height });
 
     load_lib() catch unreachable;
