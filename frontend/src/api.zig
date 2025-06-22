@@ -3,22 +3,28 @@ const types = @import("types.zig");
 const utils = @import("utils.zig");
 
 // Global state pointer for callbacks (needed because callbacks can't capture context)
-var g_state: ?*types.GameState = null;
+pub var g_state: ?*types.GameState = null;
 
 // --- Session Management Functions ---
 
 pub fn startAuthentication(state: *types.GameState) void {
     state.game_state = .Authenticating;
     state.loading_message = "Connecting to server...";
+    state.loading_start_time = std.time.timestamp();
 
     // Set global state for callback
     g_state = state;
 
+    const builtin = @import("builtin");
+    std.debug.print("🔍 Target OS: {any}\n", .{builtin.target.os.tag});
+
     // Initialize authentication
-    if (@import("builtin").target.os.tag == .emscripten or @import("builtin").target.os.tag == .freestanding) {
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        std.debug.print("🌐 Calling JavaScript init_auth...\n", .{});
         utils.js.init_auth(on_auth_complete);
     } else {
         // For native builds, skip auth and go to loading
+        std.debug.print("🖥️ Native build detected, skipping auth...\n", .{});
         state.auth_initialized = true;
         startSession(state);
     }
@@ -27,15 +33,21 @@ pub fn startAuthentication(state: *types.GameState) void {
 pub fn startSession(state: *types.GameState) void {
     state.game_state = .Loading;
     state.loading_message = "Loading questions...";
+    state.loading_start_time = std.time.timestamp();
 
     // Set global state for callback
     g_state = state;
 
+    const builtin = @import("builtin");
+    std.debug.print("🔄 startSession called, target OS: {any}\n", .{builtin.target.os.tag});
+
     // Call fetch_questions API
-    if (@import("builtin").target.os.tag == .emscripten or @import("builtin").target.os.tag == .freestanding) {
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        std.debug.print("🌐 Calling JavaScript fetch_questions...\n", .{});
         utils.js.fetch_questions(7, null, 0, on_questions_received);
     } else {
         // For native builds, use fallback immediately
+        std.debug.print("🖥️ Native build detected, using fallback questions...\n", .{});
         initSessionWithFallback(state);
     }
 }
@@ -83,7 +95,7 @@ pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) vo
     const allocator = fba.allocator();
 
     const json_str = std.json.stringifyAlloc(allocator, answers_for_api, .{}) catch |err| {
-        std.debug.print("❌ Failed to serialize response to JSON: {}\n", .{err});
+        std.debug.print("❌ Failed to serialize response to JSON: {any}\n", .{err});
         return;
     };
 
@@ -97,7 +109,12 @@ pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) vo
 
 // Callback function for authentication initialization
 export fn on_auth_complete(success: i32) callconv(.C) void {
-    if (g_state == null) return;
+    std.debug.print("🔔 on_auth_complete called with success: {}\n", .{success});
+
+    if (g_state == null) {
+        std.debug.print("❌ g_state is null in on_auth_complete!\n", .{});
+        return;
+    }
     const state = g_state.?;
 
     if (success == 1) {
@@ -129,7 +146,10 @@ export fn on_submit_complete(success: i32, data_ptr: [*]const u8, data_len: usiz
 
 // Callback function for fetch_questions API response
 export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
-    if (g_state == null) return;
+    if (g_state == null) {
+        std.debug.print("❌ g_state is null in on_questions_received!\n", .{});
+        return;
+    }
     const state = g_state.?;
 
     if (success == 0) {
@@ -156,7 +176,6 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
         initSessionWithParsedQuestions(state, parsed_questions);
     } else {
         // JSON parsing failed, use fallback
-        std.debug.print("Failed to parse JSON, using fallback questions\n", .{});
         state.loading_message = "Failed to parse questions. Using fallback.";
         initSessionWithFallback(state);
     }
@@ -174,7 +193,7 @@ fn parseQuestionsFromJson(state: *types.GameState, json_str: []const u8) ?[7]typ
 
     // Parse JSON into struct
     const parsed = std.json.parseFromSlice(types.APIResponseJSON, allocator, json_str, .{}) catch |err| {
-        std.debug.print("Failed to parse JSON: {}\n", .{err});
+        std.debug.print("Failed to parse JSON: {any}\n", .{err});
         std.debug.print("JSON length: {}\n", .{json_str.len});
         std.debug.print("JSON preview: {s}\n", .{json_str[0..@min(json_str.len, 300)]});
         return null;
@@ -223,42 +242,34 @@ fn initSessionWithParsedQuestions(state: *types.GameState, questions: [7]types.Q
         .correct = 0,
         .finished = false,
     };
-    state.user_session.timestamp = std.time.timestamp();
-    state.user_session.session_id = utils.js.get_session_id_slice();
-    state.user_session.token = utils.js.get_token_slice();
-    state.user_session.trust = state.user_trust;
-    state.user_session.invitable = false;
-    var i: usize = 0;
-    while (i < 7) : (i += 1) {
+
+    // Initialize response tracking
+    for (0..7) |i| {
         state.user_session.responses[i] = types.QuestionResponse{
             .question_id = state.session.questions[i].id,
             .answer = null,
             .start_time = 0,
-            .duration = 0.0,
+            .duration = 0,
         };
     }
     state.game_state = .Answering;
 }
 
-fn initSessionWithFallback(state: *types.GameState) void {
+pub fn initSessionWithFallback(state: *types.GameState) void {
     state.session = types.Session{
         .questions = types.question_pool[0..7].*,
         .current = 0,
         .correct = 0,
         .finished = false,
     };
-    state.user_session.timestamp = std.time.timestamp();
-    state.user_session.session_id = utils.js.get_session_id_slice();
-    state.user_session.token = utils.js.get_token_slice();
-    state.user_session.trust = state.user_trust;
-    state.user_session.invitable = false;
-    var i: usize = 0;
-    while (i < 7) : (i += 1) {
+
+    // Initialize response tracking
+    for (0..7) |i| {
         state.user_session.responses[i] = types.QuestionResponse{
             .question_id = state.session.questions[i].id,
             .answer = null,
             .start_time = 0,
-            .duration = 0.0,
+            .duration = 0,
         };
     }
     state.game_state = .Answering;

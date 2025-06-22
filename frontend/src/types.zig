@@ -1,7 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
 
-// --- Layout Constants ---
+// --- Layout Constants (deprecated - now using responsive system) ---
+// These constants are kept for compatibility with existing UI element sizing
 pub const MARGIN = 24;
 pub const LARGE_FONT_SIZE = 32;
 pub const MEDIUM_FONT_SIZE = 24;
@@ -66,6 +67,8 @@ pub const UserSessionResponse = struct {
 
 pub const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, Finished };
 
+pub const Orientation = enum { Vertical, Horizontal };
+
 pub const Question = struct {
     id: [:0]const u8, // Unique identifier
     tags: []const []const u8 = &.{}, // Tags/categories
@@ -89,6 +92,7 @@ pub const GameState = struct {
     fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
     game_state: GameStateEnum = .Authenticating,
+    orientation: Orientation = .Vertical,
     auth_initialized: bool = false,
     session: Session = undefined,
     user_session: UserSessionResponse = UserSessionResponse{
@@ -96,7 +100,9 @@ pub const GameState = struct {
         .timestamp = 0,
     },
     user_trust: f32 = 0.0,
+    sessions_completed: u32 = 0,
     invited_shown: bool = false,
+    loading_start_time: i64 = 0,
     // UI state
     input_active: bool = false,
     input_buffer: [256]u8 = undefined,

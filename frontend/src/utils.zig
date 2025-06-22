@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const builtin = @import("builtin");
 const types = @import("types.zig");
+const render = @import("render.zig");
 
 // --- JavaScript Interop ---
 /// Only declare these for WASM targets (e.g., wasm32-freestanding or emscripten)
@@ -18,12 +19,8 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     pub extern fn get_input_active() bool;
 
     // Authentication functions
-    pub fn init_auth(callback_ptr: *const fn (success: i32) callconv(.C) void) void {
-        _ = callback_ptr;
-    }
-    pub fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
-        _ = callback_ptr;
-    }
+    pub extern fn init_auth(callback_ptr: *const fn (success: i32) callconv(.C) void) void;
+    pub extern fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
     // API functions
     pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
@@ -208,11 +205,30 @@ pub fn randomPalette(state: *types.GameState) types.Palette {
 
 // --- Canvas and Screen Utilities ---
 
-pub fn get_canvas_size() struct { w: i32, h: i32 } {
+pub fn get_canvas_size() render.CanvasSize {
+    // Handle comptime calls by providing reasonable defaults
+    if (@inComptime()) {
+        return .{ .w = 800, .h = 600 }; // Default size for comptime evaluation
+    }
+
     if (builtin.target.os.tag == .emscripten) {
         return .{ .w = js.get_canvas_width(), .h = js.get_canvas_height() };
     } else {
         return .{ .w = rl.getScreenWidth(), .h = rl.getScreenHeight() };
+    }
+}
+
+/// Forces raylib to update its internal canvas size to match the browser canvas
+/// This should be called every frame to ensure layout is responsive to canvas changes
+pub fn updateCanvasSize() void {
+    if (builtin.target.os.tag == .emscripten) {
+        const new_width = js.get_canvas_width();
+        const new_height = js.get_canvas_height();
+
+        // Only update if dimensions actually changed to avoid unnecessary operations
+        if (rl.getScreenWidth() != new_width or rl.getScreenHeight() != new_height) {
+            rl.setWindowSize(new_width, new_height);
+        }
     }
 }
 

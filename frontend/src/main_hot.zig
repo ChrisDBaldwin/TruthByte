@@ -67,7 +67,7 @@ fn load_lib() !void {
     try std.fs.cwd().copyFile(running_lib_path.?, std.fs.cwd(), hot_lib_path.?, .{});
 
     const stat = std.fs.cwd().statFile(running_lib_path.?) catch |err| {
-        std.debug.print("error checking file exists {s}: {}\n", .{ running_lib_path.?, err });
+        std.debug.print("error checking file exists {s}: {any}\n", .{ running_lib_path.?, err });
         return err;
     };
 
@@ -119,7 +119,7 @@ fn update_running_lib_path() !void {
 
 fn file_changed() !bool {
     const stats = std.fs.cwd().statFile(running_lib_path.?) catch |err| {
-        std.debug.print("error checking file changed {s}: {}\n", .{ running_lib_path.?, err });
+        std.debug.print("error checking file changed {s}: {any}\n", .{ running_lib_path.?, err });
         return err;
     };
     return stats.mtime > last_mod;
@@ -129,7 +129,7 @@ fn unload_lib() !void {
     lib.?.close();
     lib = null;
     std.fs.cwd().deleteFile(hot_lib_path.?) catch |err| {
-        std.debug.print("error deleting file {s}: {}\n", .{ hot_lib_path.?, err });
+        std.debug.print("error deleting file {s}: {any}\n", .{ hot_lib_path.?, err });
         return err;
     };
     std.heap.c_allocator.free(hot_lib_path.?);
