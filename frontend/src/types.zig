@@ -66,6 +66,8 @@ pub const UserSessionResponse = struct {
 
 pub const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, Finished };
 
+pub const Orientation = enum { Vertical, Horizontal };
+
 pub const Question = struct {
     id: [:0]const u8, // Unique identifier
     tags: []const []const u8 = &.{}, // Tags/categories
@@ -89,6 +91,7 @@ pub const GameState = struct {
     fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
     game_state: GameStateEnum = .Authenticating,
+    orientation: Orientation = .Vertical,
     auth_initialized: bool = false,
     session: Session = undefined,
     user_session: UserSessionResponse = UserSessionResponse{

@@ -44,13 +44,20 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
         state.last_screen_height = screen_height;
     }
 
+    // Update orientation based on screen dimensions
+    const new_orientation: types.Orientation = if (screen_width > screen_height) .Horizontal else .Vertical;
+    if (state.orientation != new_orientation) {
+        state.orientation = new_orientation;
+        std.debug.print("🔄 Orientation changed to: {}\n", .{state.orientation});
+    }
+
     // Don't process input during loading
     if (state.game_state == .Loading or state.game_state == .Authenticating) {
         return;
     }
 
     // Calculate layout for UI interaction
-    const layout = render.calculateLayout();
+    const layout = render.calculateLayout(state);
 
     // Handle input events
     if (input.getInputEvent(state)) |input_event| {

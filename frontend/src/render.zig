@@ -26,7 +26,14 @@ pub const UILayout = struct {
     input_box: rl.Rectangle,
 };
 
-pub fn calculateLayout() UILayout {
+pub fn calculateLayout(state: *types.GameState) UILayout {
+    return switch (state.orientation) {
+        .Vertical => calculateVerticalLayout(),
+        .Horizontal => calculateHorizontalLayout(),
+    };
+}
+
+fn calculateVerticalLayout() UILayout {
     const size = utils.get_canvas_size();
     const screen_width = size.w;
     const screen_height = size.h;
@@ -90,6 +97,73 @@ pub fn calculateLayout() UILayout {
     };
 }
 
+fn calculateHorizontalLayout() UILayout {
+    const size = utils.get_canvas_size();
+    const screen_width = size.w;
+    const screen_height = size.h;
+
+    // Horizontal layout: Question area on left, controls on right
+    const question_area_width = @divTrunc((screen_width * 2), 3);
+    const side_panel_x = question_area_width + types.MARGIN;
+
+    // Question area layout (left side)
+    const question_x = types.MARGIN;
+    const question_y = types.MARGIN;
+    const progress_y = question_y;
+    const question_text_y = progress_y + types.MEDIUM_FONT_SIZE + types.SMALL_SPACING;
+
+    // Answer buttons: vertical stack in question area
+    const buttons_y = question_text_y + types.LARGE_FONT_SIZE + types.ELEMENT_SPACING;
+    const button_spacing = 20;
+    const button_rect_true = rl.Rectangle{ .x = @as(f32, @floatFromInt(question_x)), .y = @as(f32, @floatFromInt(buttons_y)), .width = types.button_w, .height = types.button_h };
+    const button_rect_false = rl.Rectangle{ .x = @as(f32, @floatFromInt(question_x)), .y = @as(f32, @floatFromInt(buttons_y + @as(i32, @intFromFloat(types.button_h)) + button_spacing)), .width = types.button_w, .height = types.button_h };
+
+    // Confirm button below answer buttons
+    const confirm_button_y = buttons_y + @as(i32, @intFromFloat(types.button_h)) * 2 + button_spacing * 2 + types.ELEMENT_SPACING;
+    const confirm_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(question_x)), .y = @as(f32, @floatFromInt(confirm_button_y)), .width = types.confirm_w, .height = types.confirm_h };
+
+    // Continue button for finished state
+    const continue_button_y = question_text_y + types.MEDIUM_SPACING + types.LARGE_FONT_SIZE + types.ELEMENT_SPACING;
+    const continue_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(question_x)), .y = @as(f32, @floatFromInt(continue_button_y)), .width = types.confirm_w, .height = types.confirm_h };
+
+    // Side panel controls (right side)
+    const color_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(side_panel_x)), .y = @as(f32, @floatFromInt(types.MARGIN)), .width = types.COLOR_BUTTON_WIDTH, .height = types.COLOR_BUTTON_HEIGHT };
+
+    // Bottom buttons in side panel
+    const bottom_btn_y = screen_height - types.BOTTOM_BUTTON_HEIGHT - types.MARGIN;
+    const answer_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(side_panel_x)), .y = @as(f32, @floatFromInt(bottom_btn_y)), .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
+    const submit_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(side_panel_x)), .y = @as(f32, @floatFromInt(bottom_btn_y - types.BOTTOM_BUTTON_HEIGHT - types.BOTTOM_BUTTON_GAP)), .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
+
+    // Input box (centered in question area)
+    const input_box_x = @as(f32, @floatFromInt(question_x));
+    const input_box_y = @as(f32, @floatFromInt(question_text_y + types.MEDIUM_SPACING));
+    const input_box = rl.Rectangle{ .x = input_box_x, .y = input_box_y, .width = @min(types.INPUT_BOX_WIDTH, @as(f32, @floatFromInt(question_area_width)) - 2 * types.MARGIN), .height = types.INPUT_BOX_HEIGHT };
+
+    // Calculate dummy values for compatibility
+    const ui_block_height = confirm_button_y + @as(i32, @intFromFloat(types.confirm_h)) - question_y;
+    const ui_start_y = question_y;
+
+    return UILayout{
+        .screen_width = screen_width,
+        .screen_height = screen_height,
+        .ui_block_height = ui_block_height,
+        .ui_start_y = ui_start_y,
+        .progress_y = progress_y,
+        .question_y = question_text_y,
+        .buttons_y = buttons_y,
+        .confirm_button_y = confirm_button_y,
+        .continue_button_y = continue_button_y,
+        .button_rect_true = button_rect_true,
+        .button_rect_false = button_rect_false,
+        .confirm_rect = confirm_rect,
+        .continue_rect = continue_rect,
+        .randomize_btn = color_btn,
+        .submit_btn = submit_btn,
+        .answer_btn = answer_btn,
+        .input_box = input_box,
+    };
+}
+
 // --- Rendering Functions ---
 
 pub fn drawLoadingScreen(state: *types.GameState, layout: UILayout) void {
@@ -111,29 +185,43 @@ pub fn drawLoadingScreen(state: *types.GameState, layout: UILayout) void {
     rl.drawText(dots_text, @divTrunc((layout.screen_width - dots_width), 2), layout.question_y + types.MEDIUM_SPACING, types.LARGE_FONT_SIZE, state.fg_color);
 }
 
-pub fn drawAnsweringScreen(state: *types.GameState, layout: UILayout) void {
+// --- Modular Drawing Functions ---
+
+fn drawQuestionHeader(state: *types.GameState, layout: UILayout) void {
     const qnum = state.session.current + 1;
-    // Use a simpler approach to avoid WASM memory issues
     var qstr_buf: [32]u8 = undefined;
     const qstr = std.fmt.bufPrintZ(&qstr_buf, "Question: {}", .{qnum}) catch "Question: ?";
     const qstr_width = rl.measureText(qstr, types.MEDIUM_FONT_SIZE);
     rl.drawText(qstr, @divTrunc((layout.screen_width - qstr_width), 2), layout.progress_y, types.MEDIUM_FONT_SIZE, state.fg_color);
+}
 
-    // Center question text
+fn drawQuestionText(state: *types.GameState, layout: UILayout) void {
     const question = state.session.questions[state.session.current].question;
     const question_width = rl.measureText(question, types.LARGE_FONT_SIZE);
     rl.drawText(question, @divTrunc((layout.screen_width - question_width), 2), layout.question_y, types.LARGE_FONT_SIZE, state.fg_color);
+}
 
-    // Draw TRUE/FALSE buttons
+fn drawAnswerButtons(state: *types.GameState, layout: UILayout) void {
+    // Draw TRUE button
     rl.drawRectangleLinesEx(layout.button_rect_true, if (state.selected == true) types.THICK_BORDER else types.THIN_BORDER, if (state.selected == true) types.accent else state.fg_color);
-    rl.drawText("TRUE", @as(i32, @intFromFloat(layout.button_rect_true.x)) + types.BUTTON_TEXT_OFFSET_X, layout.buttons_y + types.BUTTON_TEXT_OFFSET_Y, types.LARGE_FONT_SIZE, state.fg_color);
-    rl.drawRectangleLinesEx(layout.button_rect_false, if (state.selected == false) types.THICK_BORDER else types.THIN_BORDER, if (state.selected == false) types.accent else state.fg_color);
-    rl.drawText("FALSE", @as(i32, @intFromFloat(layout.button_rect_false.x)) + types.BUTTON_TEXT_OFFSET_X, layout.buttons_y + types.BUTTON_TEXT_OFFSET_Y, types.LARGE_FONT_SIZE, state.fg_color);
+    rl.drawText("TRUE", @as(i32, @intFromFloat(layout.button_rect_true.x)) + types.BUTTON_TEXT_OFFSET_X, @as(i32, @intFromFloat(layout.button_rect_true.y)) + types.BUTTON_TEXT_OFFSET_Y, types.LARGE_FONT_SIZE, state.fg_color);
 
-    // Draw confirm button
+    // Draw FALSE button
+    rl.drawRectangleLinesEx(layout.button_rect_false, if (state.selected == false) types.THICK_BORDER else types.THIN_BORDER, if (state.selected == false) types.accent else state.fg_color);
+    rl.drawText("FALSE", @as(i32, @intFromFloat(layout.button_rect_false.x)) + types.BUTTON_TEXT_OFFSET_X, @as(i32, @intFromFloat(layout.button_rect_false.y)) + types.BUTTON_TEXT_OFFSET_Y, types.LARGE_FONT_SIZE, state.fg_color);
+}
+
+fn drawConfirmButton(state: *types.GameState, layout: UILayout) void {
     const confirm_color = if (state.selected != null) types.accent else rl.Color{ .r = 180, .g = 180, .b = 180, .a = 255 };
     rl.drawRectangle(@as(i32, @intFromFloat(layout.confirm_rect.x)), layout.confirm_button_y, @as(i32, @intFromFloat(types.confirm_w)), @as(i32, @intFromFloat(types.confirm_h)), confirm_color);
     rl.drawText("CONFIRM", @as(i32, @intFromFloat(layout.confirm_rect.x)) + types.CONFIRM_TEXT_OFFSET_X, layout.confirm_button_y + types.CONFIRM_TEXT_OFFSET_Y, types.MEDIUM_FONT_SIZE, .white);
+}
+
+pub fn drawAnsweringScreen(state: *types.GameState, layout: UILayout) void {
+    drawQuestionHeader(state, layout);
+    drawQuestionText(state, layout);
+    drawAnswerButtons(state, layout);
+    drawConfirmButton(state, layout);
 }
 
 pub fn drawFinishedScreen(state: *types.GameState, layout: UILayout) void {
@@ -197,7 +285,7 @@ pub fn draw(state: *types.GameState) void {
     defer rl.endDrawing();
     rl.clearBackground(state.bg_color);
 
-    const layout = calculateLayout();
+    const layout = calculateLayout(state);
 
     // Draw state-specific UI
     switch (state.game_state) {
