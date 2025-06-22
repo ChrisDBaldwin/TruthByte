@@ -1,16 +1,17 @@
 # TruthByte Frontend Documentation
 
-Complete guide to the TruthByte frontend: Zig → WASM game with full mobile support and optimized build system.
+Complete guide to the TruthByte frontend: Zig → WASM game with full mobile support, optimized build system, and modular architecture.
 
 ## Architecture Overview
 
-The frontend is built in **Zig** and compiles to **WebAssembly (WASM)** for web deployment, with native builds for development.
+The frontend is built in **Zig** and compiles to **WebAssembly (WASM)** for web deployment, with native builds for development. The codebase is organized into a modular architecture for maintainability and development efficiency.
 
 ### Key Technologies
 - **Zig Language**: Modern systems programming language
 - **Raylib**: Cross-platform game development library
 - **Emscripten**: Zig → WASM compilation toolchain
 - **Custom Input System**: Unified mouse/touch/keyboard handling
+- **Modular Architecture**: Separated concerns for easy maintenance
 
 ### Build Targets
 ```
@@ -29,13 +30,162 @@ frontend/
 ├── src/
 │   ├── main_release.zig      # WASM production entry point
 │   ├── main_hot.zig          # Native development entry point
-│   └── game.zig              # Core game logic and UI
+│   ├── game.zig              # Main game loop and coordination (85 lines)
+│   ├── types.zig             # Type definitions and constants (151 lines)
+│   ├── utils.zig             # Utilities and JavaScript interop (183 lines)
+│   ├── input.zig             # Input handling system (96 lines)
+│   ├── api.zig               # Network and API management (219 lines)
+│   └── render.zig            # UI rendering system (157 lines)
 ├── build.zig                 # Zig build configuration
 ├── build.zig.zon             # Zig dependencies
 ├── shell.html                # WASM container HTML template
 ├── truthbyte_bindings.js     # JavaScript ↔ WASM interface
 └── res/                      # Game resources/assets
 ```
+
+## Modular Architecture
+
+The frontend has been refactored from a single 1000+ line file into a clean modular structure:
+
+### 🎯 Core Modules
+
+#### `game.zig` - Main Game Loop (85 lines)
+**Purpose**: High-level game coordination and exported API
+```zig
+// Clean main game loop
+pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque;
+pub export fn update(state: *types.GameState) callconv(.C) void;
+pub export fn draw(state: *types.GameState) callconv(.C) void;
+```
+
+**Responsibilities**:
+- Exported API functions for WASM/native
+- High-level game state coordination
+- Module orchestration
+
+#### `types.zig` - Type Definitions (151 lines)
+**Purpose**: All type definitions, constants, and static data
+```zig
+// Core game types
+pub const GameState = struct { /* ... */ };
+pub const Question = struct { /* ... */ };
+pub const Session = struct { /* ... */ };
+
+// Layout constants
+pub const LARGE_FONT_SIZE = 32;
+pub const BUTTON_GAP = 40;
+// ... all UI constants
+```
+
+**Contains**:
+- `GameState` struct and all game types
+- UI layout constants and dimensions
+- Question pool and JSON response types
+- Color definitions and palette types
+
+#### `utils.zig` - Utilities & Interop (183 lines)
+**Purpose**: JavaScript interop and utility functions
+```zig
+// JavaScript bridge for WASM/native compatibility
+pub const js = if (builtin.target.os.tag == .emscripten) struct {
+    pub extern fn get_session_id() *const u8;
+    pub extern fn fetch_questions(/* ... */) void;
+    // ... other JavaScript functions
+} else struct {
+    // Native stubs
+};
+
+// Color and palette utilities
+pub fn hslToRgb(h: f32, s: f32, l: f32) rl.Color;
+pub fn initPalettes(state: *types.GameState) void;
+```
+
+**Responsibilities**:
+- JavaScript function bindings (WASM) and stubs (native)
+- Color manipulation and palette generation
+- Canvas size utilities
+- Game logic helpers
+
+#### `input.zig` - Input Handling (96 lines)
+**Purpose**: Unified input system for mouse, touch, and keyboard
+```zig
+pub const InputEvent = struct {
+    pressed: bool,
+    released: bool,
+    position: rl.Vector2,
+    source: enum { mouse, touch },
+};
+
+pub fn getInputEvent(state: *types.GameState) ?InputEvent;
+pub fn handleTextInput(state: *types.GameState) void;
+```
+
+**Features**:
+- Cross-platform touch/mouse input handling
+- JavaScript coordinate mapping for mobile
+- Text input processing
+- Input state tracking
+
+#### `api.zig` - Network & API (219 lines)
+**Purpose**: All network operations and API management
+```zig
+// Session management
+pub fn startAuthentication(state: *types.GameState) void;
+pub fn startSession(state: *types.GameState) void;
+pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) void;
+
+// Callback functions
+export fn on_auth_complete(success: i32) callconv(.C) void;
+export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void;
+```
+
+**Responsibilities**:
+- Authentication flow management
+- API callback functions
+- JSON parsing and session initialization
+- Error handling and fallback logic
+
+#### `render.zig` - UI Rendering (157 lines)
+**Purpose**: Complete UI rendering system
+```zig
+// Layout calculation system
+pub const UILayout = struct { /* all UI rectangles and positions */ };
+pub fn calculateLayout() UILayout;
+
+// State-specific rendering
+pub fn drawLoadingScreen(state: *types.GameState, layout: UILayout) void;
+pub fn drawAnsweringScreen(state: *types.GameState, layout: UILayout) void;
+pub fn drawFinishedScreen(state: *types.GameState, layout: UILayout) void;
+
+// Main draw function
+pub fn draw(state: *types.GameState) void;
+```
+
+**Features**:
+- Modular rendering for each game state
+- Automatic layout calculation
+- Responsive UI positioning
+- Easy to modify for UI redesigns
+
+### 📁 Module Dependencies
+```
+game.zig
+├── types.zig     (type definitions)
+├── utils.zig     (utilities & JS interop)
+├── input.zig     (input handling)
+├── api.zig       (network operations)
+└── render.zig    (UI rendering)
+    └── types.zig & utils.zig
+```
+
+### 🎨 Benefits of Modular Architecture
+
+1. **Maintainability**: Each module has a single, clear responsibility
+2. **UI Development**: All rendering logic isolated for easy redesign
+3. **Testing**: Individual modules can be unit tested
+4. **Parallel Development**: Different team members can work on different modules
+5. **Code Navigation**: Easy to find and modify specific functionality
+6. **Reusability**: Modules can be reused in other projects
 
 ## Build System
 
@@ -104,16 +254,18 @@ function setupTouchHandling() {
 
 #### Zig Input Processing
 ```zig
-// Unified input event handling
+// Unified input event handling in input.zig
 const InputEvent = struct {
-    type: InputType,
-    x: f32,
-    y: f32,
     pressed: bool,
+    released: bool,
+    position: rl.Vector2,
+    source: enum { mouse, touch },
 };
 
-pub fn processInput() InputEvent {
+pub fn getInputEvent(state: *types.GameState) ?InputEvent {
     // Handle mouse, touch, and keyboard events uniformly
+    // Cross-platform coordinate mapping
+    // JavaScript integration for mobile browsers
 }
 ```
 
@@ -149,7 +301,8 @@ if (window.visualViewport) {
 
 ### State Management
 ```zig
-const GameState = enum {
+// Defined in types.zig
+const GameStateEnum = enum {
     Authenticating,  // JWT token acquisition
     Loading,         // Question loading
     Answering,       // User answering questions
@@ -160,46 +313,76 @@ const GameState = enum {
 
 ### Core Game Loop
 ```zig
-pub fn update(state: *GameState) void {
-    switch (state.current_state) {
-        .Authenticating => updateAuthentication(state),
-        .Loading => updateLoading(state),
-        .Answering => updateAnswering(state),
-        .Submitting => updateSubmitting(state),
-        .Finished => updateFinished(state),
+// In game.zig - clean and focused
+pub export fn update(state: *types.GameState) callconv(.C) void {
+    // Canvas size management
+    const size = utils.get_canvas_size();
+    
+    // Input handling
+    if (input.getInputEvent(state)) |input_event| {
+        // Process UI interactions
     }
+    
+    // Text input processing
+    input.handleTextInput(state);
+    
+    // Game logic updates
 }
 
-pub fn draw(state: *GameState) void {
+pub export fn draw(state: *types.GameState) callconv(.C) void {
+    render.draw(state);  // Delegate to render module
+}
+```
+
+### State-Specific Rendering
+```zig
+// In render.zig - modular and organized
+pub fn draw(state: *types.GameState) void {
     rl.beginDrawing();
     defer rl.endDrawing();
-    
-    switch (state.current_state) {
-        .Authenticating => drawAuthenticating(state),
-        .Loading => drawLoading(state),
-        .Answering => drawAnswering(state),
-        .Submitting => drawSubmitting(state),
-        .Finished => drawFinished(state),
+    rl.clearBackground(state.bg_color);
+
+    const layout = calculateLayout();
+
+    // Draw state-specific UI
+    switch (state.game_state) {
+        .Loading, .Authenticating => drawLoadingScreen(state, layout),
+        .Answering => drawAnsweringScreen(state, layout),
+        .Finished => drawFinishedScreen(state, layout),
+        .Submitting => drawSubmittingScreen(state, layout),
     }
+
+    // Always-visible UI elements
+    drawAlwaysVisibleUI(state, layout);
 }
 ```
 
 ### Authentication Integration
 ```zig
-pub fn startAuthentication(state: *GameState) void {
-    // Call JavaScript authentication
-    js.init_auth(on_auth_complete);
-    state.auth_message = "Connecting to server...";
+// In api.zig - centralized API management
+pub fn startAuthentication(state: *types.GameState) void {
+    state.game_state = .Authenticating;
+    state.loading_message = "Connecting to server...";
+
+    if (builtin.target.os.tag == .emscripten) {
+        utils.js.init_auth(on_auth_complete);
+    } else {
+        // Native build fallback
+        state.auth_initialized = true;
+        startSession(state);
+    }
 }
 
-export fn on_auth_complete(success: bool) void {
-    if (success) {
-        // Proceed to question loading
-        global_state.auth_initialized = true;
-        startSession(global_state);
+export fn on_auth_complete(success: i32) callconv(.C) void {
+    if (g_state == null) return;
+    const state = g_state.?;
+
+    if (success == 1) {
+        state.auth_initialized = true;
+        startSession(state);
     } else {
-        // Fall back to offline mode
-        useOfflineQuestions(global_state);
+        state.loading_message = "Authentication failed. Using offline mode.";
+        initSessionWithFallback(state);
     }
 }
 ```
@@ -235,11 +418,20 @@ function _fetchWithAuth(url, options = {}) {
 
 ### Zig Extern Declarations
 ```zig
-// JavaScript function imports
-extern fn init_auth(callback: fn(bool) callconv(.C) void) void;
-extern fn auth_ping() void;
-extern fn get_token() [*:0]const u8;
-extern fn get_session_id() [*:0]const u8;
+// In utils.zig - centralized JavaScript interop
+pub const js = if (builtin.target.os.tag == .emscripten) struct {
+    pub extern fn get_session_id() *const u8;
+    pub extern fn get_session_id_len() usize;
+    pub extern fn get_token() *const u8;
+    pub extern fn get_token_len() usize;
+    pub extern fn get_canvas_width() i32;
+    pub extern fn get_canvas_height() i32;
+    pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    // ... other functions
+} else struct {
+    // Native build stubs for all functions
+};
 ```
 
 ## Build Configuration
@@ -287,6 +479,97 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
+## UI Development Guide
+
+### Adding New UI Elements
+
+With the modular architecture, UI modifications are straightforward:
+
+#### 1. Update Layout (render.zig)
+```zig
+// Add to UILayout struct
+pub const UILayout = struct {
+    // ... existing fields
+    new_button_rect: rl.Rectangle,
+};
+
+// Update calculateLayout function
+pub fn calculateLayout() UILayout {
+    // ... existing calculations
+    const new_button_rect = rl.Rectangle{
+        .x = @as(f32, @floatFromInt(screen_width - 100)),
+        .y = @as(f32, @floatFromInt(50)),
+        .width = 80,
+        .height = 40,
+    };
+    
+    return UILayout{
+        // ... existing fields
+        .new_button_rect = new_button_rect,
+    };
+}
+```
+
+#### 2. Add Rendering (render.zig)
+```zig
+pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
+    // ... existing UI elements
+    
+    // New button
+    rl.drawRectangleRec(layout.new_button_rect, types.accent);
+    rl.drawText("NEW", @as(i32, @intFromFloat(layout.new_button_rect.x)) + 10, 
+                @as(i32, @intFromFloat(layout.new_button_rect.y)) + 10, 
+                types.SMALL_FONT_SIZE, rl.Color.white);
+}
+```
+
+#### 3. Handle Input (game.zig)
+```zig
+pub export fn update(state: *types.GameState) callconv(.C) void {
+    // ... existing code
+    
+    if (input.getInputEvent(state)) |input_event| {
+        if (!input_event.pressed) return;
+        
+        const pos = input_event.position;
+        const layout = render.calculateLayout();
+        
+        // ... existing button checks
+        
+        if (rl.checkCollisionPointRec(pos, layout.new_button_rect)) {
+            // Handle new button click
+            handleNewButtonClick(state);
+        }
+    }
+}
+```
+
+#### 4. Add Constants (types.zig)
+```zig
+// Add new UI constants if needed
+pub const NEW_BUTTON_WIDTH = 80;
+pub const NEW_BUTTON_HEIGHT = 40;
+```
+
+### Theming and Colors
+
+All color management is centralized in `utils.zig`:
+
+```zig
+// Modify palette generation
+pub fn initPalettes(state: *types.GameState) void {
+    var i: usize = 0;
+    while (i < types.NUM_PALETTES) : (i += 1) {
+        const bg_hue = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(types.NUM_PALETTES));
+        const fg_hue = @mod(bg_hue + 0.5, 1.0);
+        state.palettes[i] = types.Palette{
+            .bg = hslToRgb(bg_hue, 0.6, 0.15),  // Increased saturation
+            .fg = hslToRgb(fg_hue, 0.5, 0.85),  // Adjusted lightness
+        };
+    }
+}
+```
+
 ## Deployment
 
 ### Automated Deployment
@@ -325,6 +608,7 @@ index.wasm    # Compiled WebAssembly binary
 - **ReleaseFast**: Maximum runtime performance
 - **Dead Code Elimination**: Unused code removal
 - **Link-Time Optimization**: Cross-module optimization
+- **Modular Compilation**: Only recompile changed modules
 
 ### Runtime Optimizations
 - **60 FPS Target**: Smooth animation and interaction
@@ -348,6 +632,18 @@ zig build -Doptimize=Debug run
 zig build -Dtarget=wasm32-emscripten -Doptimize=Debug run
 ```
 
+### Module-Specific Debugging
+```zig
+// In each module, add debug logging:
+const std = @import("std");
+
+pub fn debugLog(comptime message: []const u8, args: anytype) void {
+    if (builtin.mode == .Debug) {
+        std.debug.print("[MODULE_NAME] " ++ message ++ "\n", args);
+    }
+}
+```
+
 ### Browser Debugging
 - **Chrome DevTools**: Source maps for Zig debugging
 - **Console Logging**: JavaScript bridge debug info
@@ -365,19 +661,27 @@ zig build -Dtarget=wasm32-emscripten -Doptimize=Debug run
 1. **EMSDK not found**: Set `EMSDK` environment variable
 2. **Zig version**: Ensure 0.14.0+ is installed
 3. **Dependencies**: Run `zig build --fetch` to download deps
+4. **Module errors**: Check import paths in each module
 
 ### Runtime Issues
-1. **Touch not working**: Check JavaScript coordinate mapping
+1. **Touch not working**: Check `input.zig` coordinate mapping
 2. **WASM load failure**: Verify MIME types on server
-3. **Auth failures**: Check JWT token and API endpoints
+3. **Auth failures**: Check `api.zig` callback functions
 4. **Performance**: Monitor browser console for errors
+5. **Rendering issues**: Check `render.zig` layout calculations
 
 ### Mobile Issues
 1. **iOS Safari zoom**: Verify viewport meta tag
 2. **Android keyboard**: Check Visual Viewport API handling
-3. **Touch coordinates**: Verify canvas coordinate conversion
+3. **Touch coordinates**: Verify canvas coordinate conversion in `input.zig`
+
+### Module Integration Issues
+1. **Import errors**: Verify module dependencies in import statements
+2. **Type mismatches**: Ensure consistent type usage across modules
+3. **Function not found**: Check if function is marked `pub` in source module
 
 ---
 
-**Last Updated**: Current as of latest frontend build  
-**Version**: 1.0.0 
+**Last Updated**: Current as of modular refactor (v2.0.0)  
+**Architecture**: Modular Zig with 6 focused modules  
+**Lines of Code**: 891 total (was 1012 in single file) 
