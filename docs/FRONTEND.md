@@ -30,12 +30,12 @@ frontend/
 ├── src/
 │   ├── main_release.zig      # WASM production entry point
 │   ├── main_hot.zig          # Native development entry point
-│   ├── game.zig              # Main game loop and coordination (85 lines)
-│   ├── types.zig             # Type definitions and constants (151 lines)
-│   ├── utils.zig             # Utilities and JavaScript interop (183 lines)
-│   ├── input.zig             # Input handling system (96 lines)
-│   ├── api.zig               # Network and API management (219 lines)
-│   └── render.zig            # UI rendering system (157 lines)
+│   ├── game.zig              # Main game loop and coordination
+│   ├── types.zig             # Type definitions and constants
+│   ├── utils.zig             # Utilities and JavaScript interop
+│   ├── input.zig             # Input handling system
+│   ├── api.zig               # Network and API management
+│   └── render.zig            # UI rendering system
 ├── build.zig                 # Zig build configuration
 ├── build.zig.zon             # Zig dependencies
 ├── shell.html                # WASM container HTML template
@@ -49,7 +49,7 @@ The frontend has been refactored from a single 1000+ line file into a clean modu
 
 ### 🎯 Core Modules
 
-#### `game.zig` - Main Game Loop (85 lines)
+#### `game.zig` - Main Game Loop
 **Purpose**: High-level game coordination and exported API
 ```zig
 // Clean main game loop
@@ -63,7 +63,7 @@ pub export fn draw(state: *types.GameState) callconv(.C) void;
 - High-level game state coordination
 - Module orchestration
 
-#### `types.zig` - Type Definitions (151 lines)
+#### `types.zig` - Type Definitions
 **Purpose**: All type definitions, constants, and static data
 ```zig
 // Core game types
@@ -83,7 +83,7 @@ pub const BUTTON_GAP = 40;
 - Question pool and JSON response types
 - Color definitions and palette types
 
-#### `utils.zig` - Utilities & Interop (183 lines)
+#### `utils.zig` - Utilities & Interop
 **Purpose**: JavaScript interop and utility functions
 ```zig
 // JavaScript bridge for WASM/native compatibility
@@ -106,7 +106,7 @@ pub fn initPalettes(state: *types.GameState) void;
 - Canvas size utilities
 - Game logic helpers
 
-#### `input.zig` - Input Handling (96 lines)
+#### `input.zig` - Input Handling
 **Purpose**: Unified input system for mouse, touch, and keyboard
 ```zig
 pub const InputEvent = struct {
@@ -126,7 +126,7 @@ pub fn handleTextInput(state: *types.GameState) void;
 - Text input processing
 - Input state tracking
 
-#### `api.zig` - Network & API (219 lines)
+#### `api.zig` - Network & API
 **Purpose**: All network operations and API management
 ```zig
 // Session management
@@ -145,7 +145,7 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
 - JSON parsing and session initialization
 - Error handling and fallback logic
 
-#### `render.zig` - UI Rendering (157 lines)
+#### `render.zig` - UI Rendering
 **Purpose**: Complete UI rendering system
 ```zig
 // Layout calculation system
@@ -598,7 +598,7 @@ index.wasm    # Compiled WebAssembly binary
 ### CDN Configuration
 - **S3 Hosting**: Static website hosting
 - **CloudFront**: Global CDN with HTTPS
-- **Cache Strategy**: 
+- **Cache Strategy**:
   - HTML: `no-cache` (always fresh)
   - Assets: `max-age=3600` (1 hour cache)
 
@@ -606,7 +606,6 @@ index.wasm    # Compiled WebAssembly binary
 
 ### Build Optimizations
 - **ReleaseFast**: Maximum runtime performance
-- **Dead Code Elimination**: Unused code removal
 - **Link-Time Optimization**: Cross-module optimization
 - **Modular Compilation**: Only recompile changed modules
 
@@ -669,19 +668,3 @@ pub fn debugLog(comptime message: []const u8, args: anytype) void {
 3. **Auth failures**: Check `api.zig` callback functions
 4. **Performance**: Monitor browser console for errors
 5. **Rendering issues**: Check `render.zig` layout calculations
-
-### Mobile Issues
-1. **iOS Safari zoom**: Verify viewport meta tag
-2. **Android keyboard**: Check Visual Viewport API handling
-3. **Touch coordinates**: Verify canvas coordinate conversion in `input.zig`
-
-### Module Integration Issues
-1. **Import errors**: Verify module dependencies in import statements
-2. **Type mismatches**: Ensure consistent type usage across modules
-3. **Function not found**: Check if function is marked `pub` in source module
-
----
-
-**Last Updated**: Current as of modular refactor (v2.0.0)  
-**Architecture**: Modular Zig with 6 focused modules  
-**Lines of Code**: 891 total (was 1012 in single file) 
