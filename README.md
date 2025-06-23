@@ -79,10 +79,11 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 🟢 **Frontend (WASM/Zig) — Working**
 - Compiles to WASM and renders the quiz UI in the browser
 - **Full mobile touch support** with iOS Safari optimizations
+- **Persistent User Identity**: UUID v4 generation and localStorage persistence via `user.zig`
 - Loads questions, displays passages, and tracks response times per question
 - Makes API calls to the backend for fetching questions and submitting answers
 - **Cross-platform input system** supporting mouse, touch, and keyboard
-- User session tracking is planned (currently commented out)
+- **User tracking**: All API calls include X-User-ID header for backend user management
 - Optional "Submit your own question" flow is planned
 
 🟢 **Backend (Python) — Production Ready**
@@ -90,10 +91,14 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 - **Dual-Table Design**: Optimized question storage and tag indexing
 - **Sub-second Response**: Fast, predictable query performance at scale
 - **Auto-Deployment**: Fully automated AWS infrastructure deployment
+- **JWT Authentication**: Secure token-based authentication system
 - Provides:
+  - `GET /session` → generates JWT authentication tokens
   - `GET /fetch-questions` → returns randomized questions by tag (defaults to 'general')
-  - `POST /answers` → receives user answers + timing, computes trust score
-  - `POST /submit-question` → saves user-submitted questions to pending pool
+  - `POST /submit-answers` → receives user answers + timing, computes trust score
+  - `POST /propose-question` → saves user-submitted questions to pending pool
+  - `GET /get-user` → retrieves user profile and statistics
+  - `GET /auth-ping` → validates JWT tokens (debug endpoint)
   - Efficient DynamoDB integration with batch operations
 - Production features: CloudFormation infrastructure, automated S3 artifacts, Lambda packaging
 
@@ -105,10 +110,12 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 ### Data Flow
 
 ```
-User → Frontend (WASM) → GET /questions?tag=science
+User → Frontend (WASM) → GET /session (get JWT token)
+                       → GET /fetch-questions?tag=science
                            ↑ (tag-based, no scans)
-     ↓ answers w/ timing  → POST /answers
-     ↓ new question       → POST /submit-question
+     ↓ answers w/ timing  → POST /submit-answers
+     ↓ new question       → POST /propose-question
+     ↓ user stats         → GET /get-user
 ```
 
 ### Backend Architecture
