@@ -7,6 +7,7 @@ const utils = @import("utils.zig");
 const input = @import("input.zig");
 const api = @import("api.zig");
 const render = @import("render.zig");
+const user = @import("user.zig");
 
 // --- Helper Functions ---
 
@@ -37,7 +38,8 @@ fn submitQuestion(state: *types.GameState) void {
     std.debug.print("📝 Submitting question: {s}\n", .{json_str});
 
     // Call the propose_question API
-    utils.js.propose_question(json_str.ptr, json_str.len, onQuestionSubmitted);
+    const user_id_slice = user.getUserIDSlice();
+    utils.js.propose_question(json_str.ptr, json_str.len, user_id_slice.ptr, user_id_slice.len, onQuestionSubmitted);
 
     // Clear input and show feedback
     state.input_len = 0;
@@ -72,6 +74,10 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
     const pal = utils.randomPalette(state);
     state.bg_color = pal.bg;
     state.fg_color = pal.fg;
+
+    // Initialize user ID management
+    user.initUserID(&state.prng);
+    std.debug.print("🔑 User ID initialized: {s}\n", .{user.getUserID()});
 
     api.startAuthentication(state);
     state.input_active = false;

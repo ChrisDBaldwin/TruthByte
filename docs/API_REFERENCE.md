@@ -9,7 +9,7 @@ Complete reference for all TruthByte API endpoints, authentication, and data mod
 
 ## Authentication
 
-All protected endpoints require JWT authentication via Bearer token.
+All protected endpoints require JWT authentication via Bearer token and user identification via X-User-ID header.
 
 ### Getting a Token
 
@@ -33,6 +33,21 @@ Include the JWT token in the Authorization header:
 ```http
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 ```
+
+### User Identification
+
+All protected endpoints also require a user identifier in the X-User-ID header:
+
+```http
+X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
+```
+
+**User ID Requirements:**
+- Must be a valid UUID v4 format
+- Generated and managed by the frontend application
+- Persistent across user sessions via localStorage
+- Used for user tracking, statistics, and trust scoring
+- Automatically created on first application launch
 
 ## Endpoints
 
@@ -68,6 +83,7 @@ All endpoints below require JWT authentication.
 ```http
 GET /fetch-questions?tag=science&count=7
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 ```
 
 **Response:**

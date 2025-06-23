@@ -114,6 +114,23 @@ Resources:
         - Key: Project
           Value: TruthByte
 
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}-truthbyte-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: TruthByte
+
 Outputs:
   QuestionsTableName:
     Description: Name of the questions table
@@ -145,6 +162,12 @@ Outputs:
     Export:
       Name: !Sub ${Environment}-SessionsTableName
 
+  UsersTableName:
+    Description: Name of the users table
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub ${Environment}-UsersTableName
+
   QuestionsTableArn:
     Description: ARN of the questions table
     Value: !GetAtt QuestionsTable.Arn
@@ -168,6 +191,12 @@ Outputs:
     Value: !GetAtt SessionsTable.Arn
     Export:
       Name: !Sub ${Environment}-SessionsTableArn
+
+  UsersTableArn:
+    Description: ARN of the users table
+    Value: !GetAtt UsersTable.Arn
+    Export:
+      Name: !Sub ${Environment}-UsersTableArn
 
   QuestionTagsTableArn:
     Description: ARN of the question tags table
