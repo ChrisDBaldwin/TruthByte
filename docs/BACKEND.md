@@ -15,12 +15,24 @@ A scalable, tag-based backend system for TruthByte built on AWS Lambda and Dynam
 - `fetch_questions` - Returns randomized batches of questions by tag
 - `submit_answers` - Processes user answers and calculates trust scores  
 - `propose_question` - Handles user-submitted questions
+- `get_user` - Retrieves user profile and statistics
+- `get_token` - Issues JWT authentication tokens
+- `auth_ping` - Validates JWT tokens (debug endpoint)
 
 ## Structure
 
-- `submit_answers.py`, `fetch_questions.py`, `propose_question.py`: Lambda entrypoints (handlers)
-- `logic/`: Business logic for each Lambda
-- `shared/`: Shared code (e.g., DynamoDB client, data models)
+- `lambda/`: Lambda function handlers
+  - `fetch_questions.py` - Question retrieval with tag-based filtering
+  - `submit_answers.py` - Answer processing and trust score calculation
+  - `propose_question.py` - User question submissions
+  - `get_user.py` - User profile and statistics retrieval
+  - `get_token.py` - JWT token generation for authentication
+  - `auth_ping.py` - JWT token validation endpoint
+- `shared/`: Shared code modules
+  - `db.py` - DynamoDB client and operations
+  - `models.py` - Pydantic data models
+  - `auth_utils.py` - JWT authentication utilities
+  - `user_utils.py` - User management and statistics
 
 ## DynamoDB Tables
 

@@ -23,9 +23,10 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     pub extern fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
     // API functions
-    pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
-    pub extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
-    pub extern fn propose_question(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn propose_question(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn fetch_user(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
     pub export fn alloc(size: usize) *u8 {
         return @ptrCast(std.heap.page_allocator.alloc(u8, size) catch unreachable);
@@ -106,26 +107,39 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     }
 
     // Stub API functions for native builds
-    pub fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+    pub fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
         _ = num_questions;
         _ = tag_ptr;
         _ = tag_len;
+        _ = user_id_ptr;
+        _ = user_id_len;
         _ = callback_ptr;
         std.debug.print("fetch_questions is not available in native build\n", .{});
     }
 
-    pub fn submit_answers(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+    pub fn submit_answers(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
         _ = json_ptr;
         _ = json_len;
+        _ = user_id_ptr;
+        _ = user_id_len;
         _ = callback_ptr;
         std.debug.print("submit_answers is not available in native build\n", .{});
     }
 
-    pub fn propose_question(json_ptr: [*]const u8, json_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+    pub fn propose_question(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
         _ = json_ptr;
         _ = json_len;
+        _ = user_id_ptr;
+        _ = user_id_len;
         _ = callback_ptr;
         std.debug.print("propose_question is not available in native build\n", .{});
+    }
+
+    pub fn fetch_user(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = user_id_ptr;
+        _ = user_id_len;
+        _ = callback_ptr;
+        std.debug.print("fetch_user is not available in native build\n", .{});
     }
 
     /// Local helper so rest of Zig can use slices

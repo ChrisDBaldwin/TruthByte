@@ -69,14 +69,15 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 ### System Components
 
 🟢 **Frontend (WASM/Zig)**
-- **Clean Separation**: Types, utilities, input, API, rendering, and game loop modules
+- **Clean Separation**: Types, utilities, input, API, rendering, user management, and game loop modules
 - Compiles to WASM and renders the quiz UI in the browser
 - **Full mobile touch support** with iOS Safari optimizations
+- **Persistent User Identity**: UUID v4 generation and localStorage persistence via `user.zig`
 - Loads questions, displays passages, and tracks response times per question
 - Makes API calls to the backend for fetching questions and submitting answers
 - **Cross-platform input system** supporting mouse, touch, and keyboard
 - **Easy UI Development**: All rendering logic isolated in `render.zig` for simple redesigns
-- User session tracking is planned (currently commented out)
+- **User tracking**: All API calls include X-User-ID header for backend user management
 - Optional "Submit your own question" flow is planned
 
 🟢 **Backend (Python)**
@@ -100,9 +101,12 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 
 ```
 User → Frontend (WASM) → GET /questions?tag=science
-                           ↑ (tag-based, no scans)
-     ↓ answers w/ timing  → POST /answers
-     ↓ new question       → POST /submit-question
+       ↓ (UUID generated)   ↑ (tag-based, no scans)
+       ↓ localStorage       ↓ Authorization: Bearer <token>
+       ↓ persistence        ↓ X-User-ID: <uuid>
+       ↓                    ↓
+     answers w/ timing  → POST /answers (with user tracking)
+     new question       → POST /submit-question (with user ID)
 ```
 
 ### Backend Architecture

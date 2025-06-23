@@ -7,7 +7,8 @@ from typing import List, Dict, Any
 # Add the shared directory to Python path for Lambda imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
-from auth_utils import verify_token
+from auth_utils import verify_token, extract_user_id
+from user_utils import get_or_create_user, update_user_stats
 
 def validate_answer(answer: Dict[str, Any]) -> bool:
     """Validate a single answer dictionary."""
@@ -53,7 +54,7 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({'error': 'Missing or invalid token'})
             }
@@ -69,9 +70,26 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({'error': 'Invalid token'})
+            }
+        
+        # Validate and get user ID
+        try:
+            user_id = extract_user_id(headers)
+            # Ensure user exists in database (creates if not)
+            user = get_or_create_user(user_id)
+        except ValueError as e:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
+                },
+                'body': json.dumps({'error': str(e)})
             }
         # Parse the request body from API Gateway event
         # API Gateway wraps the body in a "body" field as a string
@@ -85,7 +103,7 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 "body": json.dumps({
                     "success": False,
@@ -101,7 +119,7 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 "body": json.dumps({
                     "success": False,
@@ -109,45 +127,99 @@ def lambda_handler(event, context):
                 })
             }
         
-        # Submit answers to DynamoDB
-        # Get DynamoDB table resource
-        table_name = os.environ.get('ANSWERS_TABLE_NAME', 'truthbyte-answers')
+        # Submit answers to DynamoDB and update user statistics
+        # Get DynamoDB table resources
+        answers_table_name = os.environ.get('ANSWERS_TABLE_NAME', 'truthbyte-answers')
+        questions_table_name = os.environ.get('QUESTIONS_TABLE_NAME', 'truthbyte-questions')
         dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table(table_name)
+        answers_table = dynamodb.Table(answers_table_name)
+        questions_table = dynamodb.Table(questions_table_name)
         
-        # Prepare batch write request
-        # Each item needs to be wrapped in a PutRequest for batch_write_item
-        batch_items = []
-        for answer in body:
-            # Format each answer as a DynamoDB item
-            item = {
-                "user_id": answer["user_id"],
-                "question_id": answer["question_id"],
-                "answer": answer["answer"],
-                "timestamp": answer["timestamp"],
+        # First, get question data to determine correct answers
+        question_ids = [answer["question_id"] for answer in body]
+        
+        # Batch get questions to validate correct answers
+        questions_response = dynamodb.batch_get_item(
+            RequestItems={
+                questions_table_name: {
+                    'Keys': [{'id': qid} for qid in question_ids],
+                    'ProjectionExpression': 'id, answer, tags'
+                }
             }
+        )
+        
+        questions_data = {
+            q['id']: q for q in questions_response['Responses'].get(questions_table_name, [])
+        }
+        
+        # Prepare batch write request for answers
+        batch_items = []
+        user_stats_updates = []
+        
+        for answer in body:
+            question_id = answer["question_id"]
+            user_answer = answer["answer"]
+            
+            # Get correct answer and tags for this question
+            question_data = questions_data.get(question_id)
+            if not question_data:
+                continue  # Skip if question not found
+            
+            correct_answer = question_data.get('answer', False)
+            question_tags = question_data.get('tags', [])
+            
+            # Format each answer as a DynamoDB item (include user_id from header)
+            item = {
+                "user_id": user_id,  # Use validated user_id from header
+                "question_id": question_id,
+                "answer": user_answer,
+                "timestamp": answer["timestamp"],
+                "correct_answer": correct_answer,
+                "is_correct": user_answer == correct_answer
+            }
+            
             # Add to batch with PutRequest wrapper
             batch_items.append({
                 'PutRequest': {
                     'Item': item
                 }
             })
+            
+            # Prepare user stats update
+            user_stats_updates.append({
+                'question_id': question_id,
+                'answer': user_answer,
+                'correct_answer': correct_answer,
+                'question_tags': question_tags
+            })
         
         # Use batch_write_item to write multiple items in a single API call
-        # This is more efficient than individual put_item calls
-        # Note: DynamoDB has a limit of 25 items per batch_write_item call
-        response = dynamodb.batch_write_item(
-            RequestItems={
-                table.name: batch_items
-            }
-        )
-        
-        # Check for any unprocessed items
-        # If DynamoDB couldn't process all items, they'll be in UnprocessedItems
-        # This could happen due to throttling or other temporary issues
         success = True
-        if 'UnprocessedItems' in response and table.name in response['UnprocessedItems']:
-            success = False
+        if batch_items:
+            response = dynamodb.batch_write_item(
+                RequestItems={
+                    answers_table.name: batch_items
+                }
+            )
+            
+            # Check for any unprocessed items
+            if 'UnprocessedItems' in response and answers_table.name in response['UnprocessedItems']:
+                success = False
+        
+        # Update user statistics for each answer
+        if success:
+            try:
+                for stats_update in user_stats_updates:
+                    update_user_stats(
+                        user_id,
+                        stats_update['question_id'],
+                        stats_update['answer'],
+                        stats_update['correct_answer'],
+                        stats_update['question_tags']
+                    )
+            except Exception as e:
+                print(f"❌ Error updating user stats: {str(e)}")
+                # Don't fail the whole request if stats update fails
         
         # Return appropriate response based on submission result
         # API Gateway expects statusCode and body in the response
@@ -157,7 +229,7 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                 "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
             },
             "body": json.dumps({
                 "success": success
@@ -173,7 +245,7 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                 "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
             },
             "body": json.dumps({
                 "success": False,

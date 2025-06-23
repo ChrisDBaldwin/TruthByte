@@ -42,6 +42,9 @@ Resources:
           QUESTION_TAGS_TABLE_NAME: 
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-QuestionTagsTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
 
   SubmitAnswerFunction:
     Type: AWS::Lambda::Function
@@ -64,6 +67,12 @@ Resources:
           ANSWERS_TABLE_NAME: 
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-AnswersTableName
+          QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionsTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
 
   ProposeQuestionFunction:
     Type: AWS::Lambda::Function
@@ -125,6 +134,28 @@ Resources:
           LOG_LEVEL: INFO
           JWT_SECRET: !Ref JwtSecret
 
+  GetUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-get-user
+      Handler: get_user.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: get-user.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -160,6 +191,8 @@ Resources:
                       Fn::Sub: ${Environment}-AnswersTableArn
                   - Fn::ImportValue: 
                       Fn::Sub: ${Environment}-SessionsTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-UsersTableArn
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -196,4 +229,10 @@ Outputs:
     Description: ARN of the auth ping Lambda function
     Value: !GetAtt AuthPingFunction.Arn
     Export:
-      Name: !Sub ${Environment}-AuthPingFunctionArn 
+      Name: !Sub ${Environment}-AuthPingFunctionArn
+
+  GetUserFunctionArn:
+    Description: ARN of the get user Lambda function
+    Value: !GetAtt GetUserFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-GetUserFunctionArn 

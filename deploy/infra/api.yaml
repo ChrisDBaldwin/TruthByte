@@ -24,6 +24,9 @@ Parameters:
   AuthPingFunctionArn:
     Type: String
     Description: ARN of the auth ping Lambda function
+  GetUserFunctionArn:
+    Type: String
+    Description: ARN of the get user Lambda function
   CustomDomainName:
     Type: String
     Default: api.truthbyte.voidtalker.com
@@ -84,7 +87,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
               method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
       MethodResponses:
@@ -128,7 +131,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
               method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
       MethodResponses:
@@ -172,7 +175,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
               method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
       MethodResponses:
@@ -216,7 +219,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
               method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
       MethodResponses:
@@ -260,7 +263,51 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  # Get User Endpoint (/user)
+  UserResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResource
+      PathPart: user
+
+  UserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UserResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetUserFunctionArn}/invocations
+
+  UserCorsOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UserResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
               method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
       MethodResponses:
@@ -284,6 +331,8 @@ Resources:
       - SessionCorsOptions
       - PingMethod
       - PingCorsOptions
+      - UserMethod
+      - UserCorsOptions
     Properties:
       RestApiId: !Ref ApiGateway
 
@@ -332,6 +381,14 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref AuthPingFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  GetUserPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetUserFunctionArn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
 

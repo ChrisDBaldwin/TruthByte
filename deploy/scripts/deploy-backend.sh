@@ -108,6 +108,7 @@ if [ "$SKIP_PACKAGING" = false ]; then
         "propose-question:../../backend/lambda/propose_question.py"
         "get-token:../../backend/lambda/get_token.py"
         "auth-ping:../../backend/lambda/auth_ping.py"
+        "get-user:../../backend/lambda/get_user.py"
     )   
 
     for func in "${FUNCTIONS[@]}"; do
@@ -127,7 +128,7 @@ if [ "$SKIP_PACKAGING" = false ]; then
         cp "$path" "$TEMP_DIR"
         
         # Also copy the shared module for auth functions
-        if [[ "$name" == "get-token" || "$name" == "auth-ping" || "$name" == "fetch-questions" || "$name" == "submit-answers" || "$name" == "propose-question" ]]; then
+        if [[ "$name" == "get-token" || "$name" == "auth-ping" || "$name" == "fetch-questions" || "$name" == "submit-answers" || "$name" == "propose-question" || "$name" == "get-user" ]]; then
             echo "Copying shared auth utilities..."
             cp -r "../../backend/shared" "$TEMP_DIR/"
         fi
@@ -192,6 +193,7 @@ SUBMIT_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONM
 PROPOSE_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`ProposeQuestionFunctionArn`].OutputValue' --output text)
 GET_TOKEN_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetTokenFunctionArn`].OutputValue' --output text)
 AUTH_PING_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`AuthPingFunctionArn`].OutputValue' --output text)
+GET_USER_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserFunctionArn`].OutputValue' --output text)
 
 # Deploy API Gateway with custom domain
 echo "Deploying API Gateway with custom domain..."
@@ -205,6 +207,7 @@ aws cloudformation deploy \
         ProposeQuestionFunctionArn="$PROPOSE_FUNCTION_ARN" \
         GetTokenFunctionArn="$GET_TOKEN_FUNCTION_ARN" \
         AuthPingFunctionArn="$AUTH_PING_FUNCTION_ARN" \
+        GetUserFunctionArn="$GET_USER_FUNCTION_ARN" \
         ApiCertificateArn="$API_CERTIFICATE_ARN"
 echo "API Gateway deployed"
 

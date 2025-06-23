@@ -35,7 +35,8 @@ frontend/
 │   ├── utils.zig             # Utilities and JavaScript interop
 │   ├── input.zig             # Input handling system
 │   ├── api.zig               # Network and API management
-│   └── render.zig            # UI rendering system
+│   ├── render.zig            # UI rendering system
+│   └── user.zig              # User identity and persistence management
 ├── build.zig                 # Zig build configuration
 ├── build.zig.zon             # Zig dependencies
 ├── shell.html                # WASM container HTML template
@@ -167,6 +168,32 @@ pub fn draw(state: *types.GameState) void;
 - Responsive UI positioning
 - Easy to modify for UI redesigns
 
+#### `user.zig` - User Identity Management
+**Purpose**: Persistent user identity and localStorage integration
+```zig
+// User ID management
+pub fn initUserID(prng: *std.Random.DefaultPrng) void;
+pub fn getUserID() [:0]const u8;
+pub fn getUserIDSlice() []const u8;
+pub fn resetUserID() void;
+
+// Internal UUID generation
+fn generateUUID(prng: *std.Random.DefaultPrng) [36]u8;
+```
+
+**Features**:
+- **Cryptographically secure UUID v4 generation** using Zig's PRNG
+- **Persistent storage** via localStorage with minimal JavaScript interface
+- **Type-safe API** for user ID management across the application
+- **Cross-platform support** (web and native builds)
+- **Automatic initialization** during game startup
+
+**Architecture**:
+- Generates UUID v4 compliant identifiers with proper version and variant bits
+- Stores user ID in browser localStorage for persistence across sessions
+- Provides clean Zig interface that eliminates JavaScript scoping issues
+- Used by all API calls to include `X-User-ID` header for backend user tracking
+
 ### 📁 Module Dependencies
 ```
 game.zig
@@ -174,8 +201,10 @@ game.zig
 ├── utils.zig     (utilities & JS interop)
 ├── input.zig     (input handling)
 ├── api.zig       (network operations)
-└── render.zig    (UI rendering)
-    └── types.zig & utils.zig
+├── render.zig    (UI rendering)
+│   └── types.zig & utils.zig
+└── user.zig      (user identity management)
+    └── used by api.zig and game.zig
 ```
 
 ### 🎨 Benefits of Modular Architecture

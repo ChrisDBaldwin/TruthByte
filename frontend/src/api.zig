@@ -1,6 +1,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
+const user = @import("user.zig");
 
 // Global state pointer for callbacks (needed because callbacks can't capture context)
 pub var g_state: ?*types.GameState = null;
@@ -44,7 +45,8 @@ pub fn startSession(state: *types.GameState) void {
     // Call fetch_questions API
     if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
         std.debug.print("🌐 Calling JavaScript fetch_questions...\n", .{});
-        utils.js.fetch_questions(7, null, 0, on_questions_received);
+        const user_id_slice = user.getUserIDSlice();
+        utils.js.fetch_questions(7, null, 0, user_id_slice.ptr, user_id_slice.len, on_questions_received);
     } else {
         // For native builds, use fallback immediately
         std.debug.print("🖥️ Native build detected, using fallback questions...\n", .{});
@@ -102,7 +104,8 @@ pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) vo
     std.debug.print("📝 JSON payload: {s}\n", .{json_str});
     std.debug.print("🌐 Calling js.submit_answers...\n", .{});
 
-    utils.js.submit_answers(json_str.ptr, json_str.len, on_submit_complete);
+    const user_id_slice = user.getUserIDSlice();
+    utils.js.submit_answers(json_str.ptr, json_str.len, user_id_slice.ptr, user_id_slice.len, on_submit_complete);
 }
 
 // --- Callback Functions ---

@@ -9,7 +9,8 @@ from decimal import Decimal
 # Add the shared directory to Python path for Lambda imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
-from auth_utils import verify_token
+from auth_utils import verify_token, extract_user_id
+from user_utils import get_or_create_user
 
 # Initialize DynamoDB resource and tables
 # boto3.resource provides a higher-level interface than boto3.client
@@ -63,7 +64,7 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({'error': 'Missing or invalid token'})
             }
@@ -79,9 +80,26 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({'error': 'Invalid token'})
+            }
+        
+        # Validate and get user ID
+        try:
+            user_id = extract_user_id(headers)
+            # Ensure user exists in database (creates if not)
+            user = get_or_create_user(user_id)
+        except ValueError as e:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
+                },
+                'body': json.dumps({'error': str(e)})
             }
         # Extract parameters from query string parameters
         query_params = event.get('queryStringParameters', {}) or {}
@@ -140,7 +158,7 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({
                     'error': f'No questions found for tag: {tag}'
@@ -161,7 +179,7 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                 "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
             },
             'body': json.dumps({
                 'questions': selected_questions,
@@ -180,7 +198,7 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                 "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
             },
             "body": json.dumps({
                 "error": f"Unexpected error in lambda handler: {str(e)}"
