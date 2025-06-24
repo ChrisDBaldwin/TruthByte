@@ -17,15 +17,12 @@ pub fn startAuthentication(state: *types.GameState) void {
     g_state = state;
 
     const builtin = @import("builtin");
-    std.debug.print("🔍 Target OS: {any}\n", .{builtin.target.os.tag});
 
     // Initialize authentication
     if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
-        std.debug.print("🌐 Calling JavaScript init_auth...\n", .{});
         utils.js.init_auth(on_auth_complete);
     } else {
         // For native builds, skip auth and go to loading
-        std.debug.print("🖥️ Native build detected, skipping auth...\n", .{});
         state.auth_initialized = true;
         startSession(state);
     }
@@ -40,37 +37,24 @@ pub fn startSession(state: *types.GameState) void {
     g_state = state;
 
     const builtin = @import("builtin");
-    std.debug.print("🔄 startSession called, target OS: {any}\n", .{builtin.target.os.tag});
 
     // Call fetch_questions API
     if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
-        std.debug.print("🌐 Calling JavaScript fetch_questions...\n", .{});
         const user_id_slice = user.getUserIDSlice();
         utils.js.fetch_questions(7, null, 0, user_id_slice.ptr, user_id_slice.len, on_questions_received);
     } else {
         // For native builds, use fallback immediately
-        std.debug.print("🖥️ Native build detected, using fallback questions...\n", .{});
         initSessionWithFallback(state);
     }
 }
 
 pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) void {
-    std.debug.print("🚀 submitResponseBatch called!\n", .{});
-
     user_session_response.session_id = utils.js.get_session_id_slice();
     user_session_response.token = utils.js.get_token_slice();
     user_session_response.trust = user_session_response.trust;
     user_session_response.invitable = false; // TODO: implement
     user_session_response.responses = user_session_response.responses;
     user_session_response.timestamp = std.time.timestamp();
-
-    std.debug.print("📤 Submitting session:\n  session_id: {s}\n  token: {s}\n  timestamp: {d}\n  trust: {d}\n  invitable: {}\n", .{
-        user_session_response.session_id,
-        user_session_response.token,
-        user_session_response.timestamp,
-        user_session_response.trust,
-        user_session_response.invitable,
-    });
 
     // Convert responses to the format expected by the lambda (list of answers with user_id)
     // The lambda expects: [{"user_id": str, "question_id": str, "answer": bool, "timestamp": number}]
@@ -91,18 +75,14 @@ pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) vo
         };
     }
 
-    // Serialize to JSON using a fixed buffer allocator for better memory control
-    var json_buffer: [16384]u8 = undefined; // 16KB buffer
-    var fba = std.heap.FixedBufferAllocator.init(&json_buffer);
+    // Serialize to JSON using the global buffer to avoid stack issues
+    var fba = std.heap.FixedBufferAllocator.init(&global_json_buffer);
     const allocator = fba.allocator();
 
     const json_str = std.json.stringifyAlloc(allocator, answers_for_api, .{}) catch |err| {
         std.debug.print("❌ Failed to serialize response to JSON: {any}\n", .{err});
         return;
     };
-
-    std.debug.print("📝 JSON payload: {s}\n", .{json_str});
-    std.debug.print("🌐 Calling js.submit_answers...\n", .{});
 
     const user_id_slice = user.getUserIDSlice();
     utils.js.submit_answers(json_str.ptr, json_str.len, user_id_slice.ptr, user_id_slice.len, on_submit_complete);
@@ -112,8 +92,6 @@ pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) vo
 
 // Callback function for authentication initialization
 export fn on_auth_complete(success: i32) callconv(.C) void {
-    std.debug.print("🔔 on_auth_complete called with success: {}\n", .{success});
-
     if (g_state == null) {
         std.debug.print("❌ g_state is null in on_auth_complete!\n", .{});
         return;
@@ -122,13 +100,11 @@ export fn on_auth_complete(success: i32) callconv(.C) void {
 
     if (success == 1) {
         // Authentication successful
-        std.debug.print("✅ Authentication successful!\n", .{});
         state.auth_initialized = true;
         // Now load questions
         startSession(state);
     } else {
         // Authentication failed
-        std.debug.print("❌ Authentication failed!\n", .{});
         state.loading_message = "Authentication failed. Using offline mode.";
         state.auth_initialized = false;
         // Use fallback questions without authentication
@@ -140,7 +116,7 @@ export fn on_auth_complete(success: i32) callconv(.C) void {
 export fn on_submit_complete(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
     if (g_state == null) return;
     if (success == 1) {
-        std.debug.print("Answers submitted successfully: {}\n", .{success});
+        // Answers submitted successfully
     } else {
         const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
         std.debug.print("Failed to submit answers: {s}\n", .{error_msg});
@@ -166,12 +142,9 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
     }
 
     // Parse JSON response
-    std.debug.print("Raw data_len parameter: {}\n", .{data_len});
     // JavaScript adds +1 for null terminator, but JSON parser doesn't want that
     const actual_len = if (data_len > 0 and data_ptr[data_len - 1] == 0) data_len - 1 else data_len;
     const json_str = data_ptr[0..actual_len];
-    std.debug.print("Adjusted JSON string length: {}\n", .{json_str.len});
-    std.debug.print("Received questions JSON: {s}\n", .{json_str});
 
     // Parse JSON and create questions from API response
     if (parseQuestionsFromJson(state, json_str)) |parsed_questions| {
@@ -186,12 +159,15 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
 
 // --- JSON Parsing Functions ---
 
+// Global buffer for JSON parsing to avoid stack overflow
+var global_json_buffer: [8192]u8 = undefined; // Reduced from 16KB to 8KB and moved to global
+
 // JSON parsing function using struct-based deserialization
 fn parseQuestionsFromJson(state: *types.GameState, json_str: []const u8) ?[7]types.Question {
     _ = state; // Parameter not used in parsing logic
 
-    var backing_buffer: [16384]u8 = undefined; // 16KB buffer for JSON parsing, tune as needed
-    var fba = std.heap.FixedBufferAllocator.init(&backing_buffer);
+    // Use global buffer to avoid stack overflow in WASM
+    var fba = std.heap.FixedBufferAllocator.init(&global_json_buffer);
     const allocator = fba.allocator();
 
     // Parse JSON into struct
@@ -204,7 +180,6 @@ fn parseQuestionsFromJson(state: *types.GameState, json_str: []const u8) ?[7]typ
     defer parsed.deinit();
 
     const response = parsed.value;
-    std.debug.print("✅ JSON parsed successfully! Found {} questions\n", .{response.questions.len});
     var questions: [7]types.Question = undefined;
     var question_count: usize = 0;
 

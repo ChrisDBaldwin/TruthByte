@@ -28,6 +28,18 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     pub extern fn propose_question(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn fetch_user(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
+    // --- Text Input Functions ---
+    pub extern fn showTextInput(x: i32, y: i32, width: i32, height: i32, placeholder_ptr: ?[*]const u8, placeholder_len: usize) bool;
+    pub extern fn hideTextInput() bool;
+    pub extern fn getTextInputValue() ?*u8;
+    pub extern fn getTextInputValueLength() usize;
+    pub extern fn isTextInputFocused() bool;
+    pub extern fn clearTextInput() bool;
+    pub extern fn setTextInputValue(value_ptr: [*]const u8, value_len: usize) bool;
+    // Legacy compatibility
+    pub extern fn createTextInput(x: i32, y: i32, width: i32, height: i32, placeholder_ptr: ?[*]const u8, placeholder_len: usize) bool;
+    pub extern fn activate_mobile_keyboard() bool;
+
     pub export fn alloc(size: usize) *u8 {
         return @ptrCast(std.heap.page_allocator.alloc(u8, size) catch unreachable);
     }
@@ -45,6 +57,30 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         const len = get_token_len();
         // Properly cast single pointer to many-item pointer
         return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+
+    /// Helper function to show text input with string placeholder
+    pub fn showTextInputWithString(x: i32, y: i32, width: i32, height: i32, placeholder: []const u8) bool {
+        return showTextInput(x, y, width, height, placeholder.ptr, placeholder.len);
+    }
+
+    /// Legacy helper function for compatibility
+    pub fn createTextInputWithString(x: i32, y: i32, width: i32, height: i32, placeholder: []const u8) bool {
+        return showTextInput(x, y, width, height, placeholder.ptr, placeholder.len);
+    }
+
+    /// Helper function to get text input value as Zig string
+    pub fn getTextInputValueSlice() []const u8 {
+        const ptr = getTextInputValue();
+        if (ptr == null) return "";
+        const len = getTextInputValueLength();
+        if (len == 0) return "";
+        return @as([*]const u8, @ptrCast(ptr.?))[0..len];
+    }
+
+    /// Helper function to set text input value from Zig string
+    pub fn setTextInputValueFromString(value: []const u8) bool {
+        return setTextInputValue(value.ptr, value.len);
     }
 } else struct {
     // Provide stubs for native builds
@@ -142,6 +178,60 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         std.debug.print("fetch_user is not available in native build\n", .{});
     }
 
+    // --- Text Input Functions (Native Stubs) ---
+    pub fn showTextInput(x: i32, y: i32, width: i32, height: i32, placeholder_ptr: ?[*]const u8, placeholder_len: usize) bool {
+        _ = x;
+        _ = y;
+        _ = width;
+        _ = height;
+        _ = placeholder_ptr;
+        _ = placeholder_len;
+        std.debug.print("showTextInput is not available in native build\n", .{});
+        return false;
+    }
+
+    pub fn hideTextInput() bool {
+        std.debug.print("hideTextInput is not available in native build\n", .{});
+        return false;
+    }
+
+    pub fn getTextInputValue() ?*u8 {
+        std.debug.print("getTextInputValue is not available in native build\n", .{});
+        return null;
+    }
+
+    pub fn getTextInputValueLength() usize {
+        std.debug.print("getTextInputValueLength is not available in native build\n", .{});
+        return 0;
+    }
+
+    pub fn isTextInputFocused() bool {
+        std.debug.print("isTextInputFocused is not available in native build\n", .{});
+        return false;
+    }
+
+    pub fn clearTextInput() bool {
+        std.debug.print("clearTextInput is not available in native build\n", .{});
+        return false;
+    }
+
+    pub fn setTextInputValue(value_ptr: [*]const u8, value_len: usize) bool {
+        _ = value_ptr;
+        _ = value_len;
+        std.debug.print("setTextInputValue is not available in native build\n", .{});
+        return false;
+    }
+
+    // Legacy compatibility
+    pub fn createTextInput(x: i32, y: i32, width: i32, height: i32, placeholder_ptr: ?[*]const u8, placeholder_len: usize) bool {
+        return showTextInput(x, y, width, height, placeholder_ptr, placeholder_len);
+    }
+
+    pub fn activate_mobile_keyboard() bool {
+        std.debug.print("activate_mobile_keyboard is not available in native build\n", .{});
+        return false;
+    }
+
     /// Local helper so rest of Zig can use slices
     pub fn get_session_id_slice() []const u8 {
         const ptr = get_session_id();
@@ -155,6 +245,30 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         const len = get_token_len();
         // Properly cast single pointer to many-item pointer
         return @as([*]const u8, @ptrCast(ptr))[0..len];
+    }
+
+    /// Helper function to show text input with string placeholder
+    pub fn showTextInputWithString(x: i32, y: i32, width: i32, height: i32, placeholder: []const u8) bool {
+        return showTextInput(x, y, width, height, placeholder.ptr, placeholder.len);
+    }
+
+    /// Legacy helper function for compatibility
+    pub fn createTextInputWithString(x: i32, y: i32, width: i32, height: i32, placeholder: []const u8) bool {
+        return showTextInput(x, y, width, height, placeholder.ptr, placeholder.len);
+    }
+
+    /// Helper function to get text input value as Zig string
+    pub fn getTextInputValueSlice() []const u8 {
+        const ptr = getTextInputValue();
+        if (ptr == null) return "";
+        const len = getTextInputValueLength();
+        if (len == 0) return "";
+        return @as([*]const u8, @ptrCast(ptr.?))[0..len];
+    }
+
+    /// Helper function to set text input value from Zig string
+    pub fn setTextInputValueFromString(value: []const u8) bool {
+        return setTextInputValue(value.ptr, value.len);
     }
 };
 
@@ -256,6 +370,4 @@ pub fn calcTrustScore(state: *types.GameState) f32 {
     return @as(f32, @floatFromInt(state.session.correct)) / 7.0;
 }
 
-pub fn showInviteModal() void {
-    std.debug.print("Invite modal shown!\n", .{});
-}
+pub fn showInviteModal() void {}

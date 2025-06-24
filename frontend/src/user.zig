@@ -49,7 +49,7 @@ pub fn initUserID(prng: *std.Random.DefaultPrng) void {
             @memcpy(user_id_buffer[0..result_usize], temp_buffer[0..result_usize]);
             user_id_buffer[result_usize] = 0; // Null terminate
             user_id_initialized = true;
-            std.debug.print("🔍 Loaded user ID from localStorage: {s}\n", .{user_id_buffer[0..result_usize]});
+
             return;
         }
     }
@@ -60,19 +60,15 @@ pub fn initUserID(prng: *std.Random.DefaultPrng) void {
     user_id_buffer[USER_ID_LENGTH] = 0; // Null terminate
     user_id_initialized = true;
 
-    std.debug.print("🆕 Generated new user ID: {s}\n", .{user_id_buffer[0..USER_ID_LENGTH]});
-
     // Save to localStorage (only in web builds)
     if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
         js_set_local_storage(STORAGE_KEY.ptr, STORAGE_KEY.len, &user_id_buffer, USER_ID_LENGTH);
-        std.debug.print("💾 Saved user ID to localStorage\n", .{});
     }
 }
 
 // Get the current user ID (must call initUserID first)
 pub fn getUserID() [:0]const u8 {
     if (!user_id_initialized) {
-        std.debug.print("❌ getUserID called before initUserID!\n", .{});
         return "";
     }
     return user_id_buffer[0..USER_ID_LENGTH :0];
@@ -81,7 +77,6 @@ pub fn getUserID() [:0]const u8 {
 // Get user ID as a slice for API calls
 pub fn getUserIDSlice() []const u8 {
     if (!user_id_initialized) {
-        std.debug.print("❌ getUserIDSlice called before initUserID!\n", .{});
         return "";
     }
     return user_id_buffer[0..USER_ID_LENGTH];

@@ -65,7 +65,7 @@ pub const UserSessionResponse = struct {
     timestamp: i64,
 };
 
-pub const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, Finished };
+pub const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, SubmitThanks, Finished };
 
 pub const Orientation = enum { Vertical, Horizontal };
 
@@ -105,8 +105,13 @@ pub const GameState = struct {
     loading_start_time: i64 = 0,
     // UI state
     input_active: bool = false,
-    input_buffer: [256]u8 = undefined,
+    input_buffer: [256]u8 = std.mem.zeroes([256]u8),
     input_len: usize = 0,
+    // Submit form state
+    tags_input_buffer: [256]u8 = std.mem.zeroes([256]u8),
+    tags_input_len: usize = 0,
+    tags_input_active: bool = false,
+    submit_answer_selected: ?bool = null,
     // Per-question state
     response: QuestionResponse = QuestionResponse{ .question_id = "q001", .answer = null },
     selected: ?bool = null,
@@ -150,8 +155,6 @@ pub const QuestionJSON = struct {
         const question_copy = try allocator.dupeZ(u8, self.question);
         const title_copy = try allocator.dupeZ(u8, self.title);
         const passage_copy = try allocator.dupeZ(u8, self.passage);
-
-        std.debug.print("Converted question: '{s}'\n", .{question_copy});
 
         return Question{
             .id = id_copy,

@@ -36,105 +36,7 @@ if (typeof window !== 'undefined') {
   window._touchTimeout = null; // Timeout to reset stuck touch state
 }
 
-// Touch event listener setup function
-function setupTouchListeners() {
-  var canvas = document.getElementById('canvas');
-  if (canvas && !canvas._touchListenersAdded) {
-    canvas._touchListenersAdded = true;
-    
-    // Prevent default touch behaviors on canvas
-    canvas.addEventListener('touchstart', function(e) {
-      e.preventDefault();
-      if (e.touches.length > 0) {
-        var rect = canvas.getBoundingClientRect();
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        
-        if (typeof window !== 'undefined') {
-          // Clear any existing timeout
-          if (window._touchTimeout) {
-            clearTimeout(window._touchTimeout);
-          }
-          
-          window._lastInputX = Math.round((e.touches[0].clientX - rect.left) * scaleX);
-          window._lastInputY = Math.round((e.touches[0].clientY - rect.top) * scaleY);
-          window._inputActive = true;
-          
-          // Set a timeout to automatically reset touch state if touchend doesn't fire
-          window._touchTimeout = setTimeout(function() {
-            window._inputActive = false;
-            window._touchTimeout = null;
-          }, 500); // Much shorter 0.5 second timeout
-        }
-      }
-    }, { passive: false });
-    
-    canvas.addEventListener('touchmove', function(e) {
-      e.preventDefault();
-      if (e.touches.length > 0) {
-        var rect = canvas.getBoundingClientRect();
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        
-        if (typeof window !== 'undefined') {
-          window._lastInputX = Math.round((e.touches[0].clientX - rect.left) * scaleX);
-          window._lastInputY = Math.round((e.touches[0].clientY - rect.top) * scaleY);
-          window._inputActive = true;
-        }
-      }
-    }, { passive: false });
-    
-    canvas.addEventListener('touchend', function(e) {
-      e.preventDefault();
-      if (typeof window !== 'undefined') {
-        // Clear the timeout since touchend fired properly
-        if (window._touchTimeout) {
-          clearTimeout(window._touchTimeout);
-          window._touchTimeout = null;
-        }
-        window._inputActive = false;
-      }
-    }, { passive: false });
-    
-    canvas.addEventListener('touchcancel', function(e) {
-      e.preventDefault();
-      if (typeof window !== 'undefined') {
-        // Clear the timeout since touchcancel fired  
-        if (window._touchTimeout) {
-          clearTimeout(window._touchTimeout);
-          window._touchTimeout = null;
-        }
-        window._inputActive = false;
-      }
-    }, { passive: false });
-    
-
-    return true;
-  }
-  return false;
-}
-
-// Initialize touch event listeners when the page loads
-if (typeof document !== 'undefined') {
-  // Try to setup immediately if DOM is already loaded
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupTouchListeners);
-  } else {
-    setupTouchListeners();
-  }
-  
-  // Also try to setup periodically in case canvas is created later
-  var setupInterval = setInterval(function() {
-    if (setupTouchListeners()) {
-      clearInterval(setupInterval);
-    }
-  }, 100);
-  
-  // Clear the interval after 10 seconds to avoid running forever
-  setTimeout(function() {
-    clearInterval(setupInterval);
-  }, 10000);
-}
+// Touch event handling is done in shell.html to avoid duplicate handlers
 
 var TruthByteLib = {
   get_canvas_width: function() {
@@ -191,7 +93,6 @@ var TruthByteLib = {
   
   // Initialize authentication by fetching a JWT token
   init_auth: function(callback_ptr) {
-    console.log("🌐 JavaScript init_auth called");
     fetch("https://api.truthbyte.voidtalker.com/v1/session", {
       method: 'GET',
       mode: 'cors',
@@ -206,12 +107,10 @@ var TruthByteLib = {
       return response.json();
     })
     .then(data => {
-      console.log("✅ Authentication response:", data);
       // Store token and session ID globally
       _authToken = data.token;
       _sessionId = data.session_id;
       
-      console.log("🔔 Calling Zig auth callback with success");
       // Call Zig callback with success (1)
       if (callback_ptr) {
         dynCall_vi(callback_ptr, 1);
@@ -220,7 +119,6 @@ var TruthByteLib = {
     .catch(error => {
       console.error('❌ Authentication initialization failed:', error);
       
-      console.log("🔔 Calling Zig auth callback with failure");
       // Call Zig callback with failure (0)
       if (callback_ptr) {
         dynCall_vi(callback_ptr, 0);
@@ -267,7 +165,6 @@ var TruthByteLib = {
   // Fetch questions from the backend
   // Parameters: num_questions (optional), tag (optional), user_id_ptr, user_id_len, callback_ptr
   fetch_questions: function(num_questions, tag_ptr, tag_len, user_id_ptr, user_id_len, callback_ptr) {
-    console.log("🌐 JavaScript fetch_questions called");
     var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
     var params = new URLSearchParams();
     
@@ -295,7 +192,6 @@ var TruthByteLib = {
     
     // Add User ID header from Zig
     var userId = user_id_ptr && user_id_len > 0 ? UTF8ToString(user_id_ptr, user_id_len) : '';
-    console.log("🔍 About to send request with User ID from Zig:", userId);
     headers['X-User-ID'] = userId;
     
     fetch(url, {
@@ -310,14 +206,12 @@ var TruthByteLib = {
       return response.json();
     })
     .then(data => {
-      console.log("✅ Questions response:", data);
       // Convert response to JSON string and pass to Zig callback
       var jsonStr = JSON.stringify(data);
       var len = lengthBytesUTF8(jsonStr) + 1;
       var ptr = _malloc(len);
       stringToUTF8(jsonStr, ptr, len);
       
-      console.log("🔔 Calling Zig questions callback with success");
       // Call Zig callback with success (1), data pointer, and length
       dynCall_viii(callback_ptr, 1, ptr, len);
       _free(ptr);
@@ -517,7 +411,6 @@ var TruthByteLib = {
   // Fetch user data from the backend
   // Parameters: user_id_ptr, user_id_len, callback_ptr
   fetch_user: function(user_id_ptr, user_id_len, callback_ptr) {
-    console.log("🌐 JavaScript fetch_user called");
     var headers = {
       'Content-Type': 'application/json'
     };
@@ -542,14 +435,12 @@ var TruthByteLib = {
       return response.json();
     })
     .then(data => {
-      console.log("✅ User response:", data);
       // Convert response to JSON string and pass to Zig callback
       var jsonStr = JSON.stringify(data);
       var len = lengthBytesUTF8(jsonStr) + 1;
       var ptr = _malloc(len);
       stringToUTF8(jsonStr, ptr, len);
       
-      console.log("🔔 Calling Zig user callback with success");
       // Call Zig callback with success (1), data pointer, and length
       dynCall_viii(callback_ptr, 1, ptr, len);
       _free(ptr);
@@ -565,7 +456,264 @@ var TruthByteLib = {
       dynCall_viii(callback_ptr, 0, ptr, len);
       _free(ptr);
     });
-  }
+  },
+
+  // --- Text Input Management (Single Persistent Field) ---
+  
+  showTextInput: function(x, y, width, height, placeholder_ptr, placeholder_len) {
+    // Convert Zig string to JavaScript string
+    var placeholder = '';
+    if (placeholder_ptr && placeholder_len > 0) {
+      placeholder = UTF8ToString(placeholder_ptr, placeholder_len);
+    }
+
+    // Remove any existing input first
+    var existingInput = document.getElementById('truthbyte-text-input');
+    if (existingInput) {
+      existingInput.remove();
+    }
+    
+    // Try contenteditable div instead of input - sometimes works better on mobile
+    var textInput = document.createElement('div');
+    textInput.contentEditable = true;
+    textInput.id = 'truthbyte-text-input';
+    
+    // Styling for contenteditable div
+    textInput.style.position = 'absolute';
+    textInput.style.zIndex = '10000';
+    textInput.style.fontSize = '16px';
+    textInput.style.fontFamily = 'Arial, sans-serif';
+    textInput.style.outline = 'none'; // Remove focus outline
+    textInput.style.whiteSpace = 'nowrap'; // Prevent line breaks
+    textInput.style.overflow = 'hidden'; // Hide overflow
+    
+    // Position the input exactly over the game's input box area
+    textInput.style.left = x + 'px';
+    textInput.style.top = y + 'px';
+    textInput.style.width = width + 'px';
+    textInput.style.height = height + 'px';
+    textInput.style.opacity = '1'; // Fully visible for debugging
+    textInput.style.display = 'block';
+    textInput.style.visibility = 'visible';
+    textInput.style.pointerEvents = 'auto';
+    textInput.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    textInput.style.border = '2px solid red'; // Red border to distinguish from input
+    textInput.style.color = 'black';
+    textInput.style.lineHeight = height + 'px'; // Vertical center
+    textInput.style.paddingLeft = '8px';
+    textInput.style.boxSizing = 'border-box';
+    
+    // Add placeholder functionality for contenteditable
+    if (placeholder) {
+      textInput.setAttribute('data-placeholder', placeholder);
+      textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
+    }
+    
+        // Add event listeners
+    textInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === 'Return') {
+        e.preventDefault();
+        e.stopPropagation();
+        textInput.blur();
+        TruthByteLib.hideTextInput();
+        return;
+      }
+      
+      // MANUAL BACKSPACE HANDLING for iOS Safari bug
+      if (e.key === 'Backspace') {
+        e.preventDefault(); // Prevent default (broken) backspace
+        
+        var currentText = textInput.textContent || '';
+        if (currentText.length > 0) {
+          // Remove last character manually
+          var newText = currentText.slice(0, -1);
+          textInput.textContent = newText;
+          
+          // Position cursor at end
+          if (newText.length > 0) {
+            var range = document.createRange();
+            var sel = window.getSelection();
+            range.setStart(textInput.firstChild, newText.length);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          
+          // Trigger input event manually for synchronization
+          var inputEvent = new Event('input', { bubbles: true });
+          textInput.dispatchEvent(inputEvent);
+        }
+        return;
+      }
+    });
+  
+        textInput.addEventListener('input', function(e) {
+      // Remove placeholder when typing
+      var placeholder_span = textInput.querySelector('span[style*="color: #999"]');
+      if (placeholder_span && textInput.textContent.length > 0) {
+        placeholder_span.remove();
+      }
+    });
+    
+    textInput.addEventListener('focus', function(e) {
+      // Remove placeholder on focus
+      var placeholder_span = textInput.querySelector('span[style*="color: #999"]');
+      if (placeholder_span) {
+        placeholder_span.remove();
+        textInput.textContent = '';
+      }
+    });
+    
+    textInput.addEventListener('blur', function(e) {
+      // Add placeholder back if empty
+      if (textInput.textContent.trim() === '' && placeholder) {
+        textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
+      }
+    });
+     
+     // Add click-outside-to-hide functionality
+     var clickOutsideHandler = function(e) {
+       // Check if click is outside the text input
+       if (!textInput.contains(e.target)) {
+         TruthByteLib.hideTextInput();
+         // Remove this specific event listener when hiding
+         document.removeEventListener('click', clickOutsideHandler, true);
+       }
+     };
+     
+     // Add the click listener with capture=true to catch clicks before they bubble
+     setTimeout(function() {
+       document.addEventListener('click', clickOutsideHandler, true);
+     }, 100); // Small delay to avoid immediate hiding from the click that showed the input
+     
+     document.body.appendChild(textInput);
+    
+    // Focus the contenteditable div
+    setTimeout(function() {
+      textInput.focus();
+      
+      // Move cursor to end if there's content
+      if (textInput.textContent.length > 0) {
+        var range = document.createRange();
+        var sel = window.getSelection();
+        range.setStart(textInput, textInput.childNodes.length);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }, 100);
+    
+    return true;
+  },
+
+  hideTextInput: function() {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (textInput) {
+      textInput.style.display = 'none';
+      textInput.style.visibility = 'hidden';
+      textInput.style.pointerEvents = 'none';
+      textInput.blur();
+    }
+    return true;
+  },
+
+  getTextInputValue: function() {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (!textInput) {
+      return null;
+    }
+    
+    // Use textContent for contenteditable divs, value for inputs
+    var value = textInput.textContent || textInput.value || '';
+    
+    // Allocate memory for the string and copy it
+    var len = lengthBytesUTF8(value) + 1;
+    var ptr = _malloc(len);
+    stringToUTF8(value, ptr, len);
+    return ptr;
+  },
+
+  getTextInputValueLength: function() {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (!textInput) {
+      return 0;
+    }
+    
+    // Use textContent for contenteditable divs, value for inputs
+    var value = textInput.textContent || textInput.value || '';
+    return lengthBytesUTF8(value);
+  },
+
+  isTextInputFocused: function() {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (!textInput) {
+      return false;
+    }
+    
+    return document.activeElement === textInput;
+  },
+
+  clearTextInput: function() {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (textInput) {
+      // Clear both textContent and value to support both input and contenteditable
+      textInput.textContent = '';
+      textInput.value = '';
+      
+      // Re-add placeholder if it exists
+      var placeholder = textInput.getAttribute('data-placeholder');
+      if (placeholder && textInput.contentEditable === 'true') {
+        textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
+      }
+    }
+    return true;
+  },
+
+  setTextInputValue: function(value_ptr, value_len) {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (!textInput) {
+      return false;
+    }
+    
+    var value = '';
+    if (value_ptr && value_len > 0) {
+      value = UTF8ToString(value_ptr, value_len);
+    }
+    
+    if (textInput.contentEditable === 'true') {
+      // For contenteditable div
+      textInput.textContent = value;
+      
+      // Move cursor to end
+      setTimeout(function() {
+        if (textInput === document.activeElement && value.length > 0) {
+          var range = document.createRange();
+          var sel = window.getSelection();
+          range.setStart(textInput.firstChild || textInput, value.length);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }, 10);
+    } else {
+      // For regular input
+      textInput.value = value;
+      
+      setTimeout(function() {
+        if (textInput === document.activeElement) {
+          textInput.setSelectionRange(value.length, value.length);
+        }
+      }, 10);
+    }
+    
+    return true;
+  },
+
+  // Legacy compatibility (redirect to new system)
+  createTextInput: function(x, y, width, height, placeholder_ptr, placeholder_len) {
+    return this.showTextInput(x, y, width, height, placeholder_ptr, placeholder_len);
+  },
+
 };
 
 // Add localStorage interface functions to the library
