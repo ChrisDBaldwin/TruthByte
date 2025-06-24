@@ -114,7 +114,10 @@
             
             // Touch event handlers
             canvas.addEventListener("touchstart", function(e) {
-                e.preventDefault();
+                // Don't prevent default if touching a text input (check class or ID)
+                if (e.target.id !== 'truthbyte-text-input' && !e.target.id.startsWith('truthbyte-text-input')) {
+                    e.preventDefault();
+                }
                 if (e.touches.length > 0) {
                     var coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
                     window._lastInputX = coords.x;
@@ -124,12 +127,18 @@
             }, { passive: false });
             
             canvas.addEventListener("touchend", function(e) {
-                e.preventDefault();
+                // Don't prevent default if touching a text input (check class or ID)
+                if (e.target.id !== 'truthbyte-text-input' && !e.target.id.startsWith('truthbyte-text-input')) {
+                    e.preventDefault();
+                }
                 window._inputActive = false;
             }, { passive: false });
             
             canvas.addEventListener("touchmove", function(e) {
-                e.preventDefault();
+                // Don't prevent default if touching a text input (check class or ID)
+                if (e.target.id !== 'truthbyte-text-input' && !e.target.id.startsWith('truthbyte-text-input')) {
+                    e.preventDefault();
+                }
                 if (e.touches.length > 0) {
                     var coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
                     window._lastInputX = coords.x;
@@ -158,11 +167,17 @@
             });
 
             document.body.addEventListener("touchstart", function (e) {
-                e.preventDefault();
+                // Don't prevent default if touching a text input (check class or ID)
+                if (e.target.id !== 'truthbyte-text-input' && !e.target.id.startsWith('truthbyte-text-input')) {
+                    e.preventDefault();
+                }
             }, { passive: false });
 
             document.body.addEventListener("touchmove", function (e) {
-                e.preventDefault();
+                // Don't prevent default if touching a text input (check class or ID)
+                if (e.target.id !== 'truthbyte-text-input' && !e.target.id.startsWith('truthbyte-text-input')) {
+                    e.preventDefault();
+                }
             }, { passive: false });
             
         }

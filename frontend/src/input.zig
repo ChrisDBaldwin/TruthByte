@@ -100,17 +100,53 @@ pub fn getInputEvent(state: *types.GameState) ?InputEvent {
 }
 
 pub fn handleTextInput(state: *types.GameState) void {
-    if (state.game_state != .Submitting or !state.input_active) return;
+    if (state.game_state != .Submitting or (!state.input_active and !state.tags_input_active)) return;
 
+    // Check if HTML text input is focused - if so, sync text from it
+    if (utils.js.isTextInputFocused()) {
+        const html_input_text = utils.js.getTextInputValueSlice();
+
+        if (state.input_active) {
+            // Sync HTML input text to question input buffer
+            const copy_len = @min(html_input_text.len, state.input_buffer.len - 1);
+            @memcpy(state.input_buffer[0..copy_len], html_input_text[0..copy_len]);
+            state.input_len = copy_len;
+            state.input_buffer[state.input_len] = 0; // Null terminate
+        } else if (state.tags_input_active) {
+            // Sync HTML input text to tags input buffer
+            const copy_len = @min(html_input_text.len, state.tags_input_buffer.len - 1);
+            @memcpy(state.tags_input_buffer[0..copy_len], html_input_text[0..copy_len]);
+            state.tags_input_len = copy_len;
+            state.tags_input_buffer[state.tags_input_len] = 0; // Null terminate
+        }
+        return; // Skip raylib input handling when HTML input is active
+    }
+
+    // Fallback to raylib input handling (for desktop/native builds)
     var key = rl.getCharPressed();
     while (key > 0) : (key = rl.getCharPressed()) {
-        if (key >= 32 and key <= 126 and state.input_len < state.input_buffer.len - 1) {
-            state.input_buffer[state.input_len] = @as(u8, @intCast(key));
-            state.input_len += 1;
+        if (key >= 32 and key <= 126) {
+            if (state.input_active and state.input_len < state.input_buffer.len - 1) {
+                state.input_buffer[state.input_len] = @as(u8, @intCast(key));
+                state.input_len += 1;
+            } else if (state.tags_input_active and state.tags_input_len < state.tags_input_buffer.len - 1) {
+                state.tags_input_buffer[state.tags_input_len] = @as(u8, @intCast(key));
+                state.tags_input_len += 1;
+            }
         }
     }
-    if (rl.isKeyPressed(.backspace) and state.input_len > 0) {
-        state.input_len -= 1;
+
+    if (rl.isKeyPressed(.backspace)) {
+        if (state.input_active and state.input_len > 0) {
+            state.input_len -= 1;
+            state.input_buffer[state.input_len] = 0; // Clear the removed character
+        } else if (state.tags_input_active and state.tags_input_len > 0) {
+            state.tags_input_len -= 1;
+            state.tags_input_buffer[state.tags_input_len] = 0; // Clear the removed character
+        }
     }
+
+    // Null-terminate both buffers
     state.input_buffer[state.input_len] = 0;
+    state.tags_input_buffer[state.tags_input_len] = 0;
 }

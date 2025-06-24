@@ -97,6 +97,11 @@ pub const UILayout = struct {
     answer_btn: rl.Rectangle,
     input_box: rl.Rectangle,
     back_btn: rl.Rectangle,
+    // Submit form elements
+    tags_input_box: rl.Rectangle,
+    submit_true_btn: rl.Rectangle,
+    submit_false_btn: rl.Rectangle,
+    submit_question_btn: rl.Rectangle,
 };
 
 pub fn calculateLayout(state: *types.GameState) UILayout {
@@ -171,15 +176,49 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
     const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = button_stack_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // Input box (centered vertically in main UI area)
-    var input_box_x = @divTrunc((screen_width - types.INPUT_BOX_WIDTH), 2);
-    input_box_x = @max(input_box_x, constants.margin);
-    var input_box_y = question_y + types.MEDIUM_SPACING;
-    input_box_y = @min(@max(input_box_y, constants.margin), screen_height - types.INPUT_BOX_HEIGHT - constants.margin);
-    const input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(input_box_y)), .width = types.INPUT_BOX_WIDTH, .height = types.INPUT_BOX_HEIGHT };
+    // Submit form layout - use same centering approach as answering mode
+    // Calculate form dimensions first
+    const safe_input_width = @min(types.INPUT_BOX_WIDTH, screen_width - (constants.margin * 2));
+    const form_element_spacing = types.ELEMENT_SPACING;
+    const submit_button_w = constants.button_w * 0.7;
+    const submit_button_h = constants.button_h * 0.7;
 
-    // Back button (top left corner)
-    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 40, .height = 40 };
+    // Calculate total form height to center it like answering mode
+    const form_height = types.INPUT_BOX_HEIGHT + form_element_spacing + // Question input + spacing
+        types.INPUT_BOX_HEIGHT + form_element_spacing + // Tags input + spacing
+        @as(i32, @intFromFloat(submit_button_h)) + form_element_spacing + // Answer buttons + spacing
+        @as(i32, @intFromFloat(constants.confirm_h)); // Submit button
+
+    // Center the form block vertically like answering mode
+    var form_start_y = @divTrunc((screen_height - form_height), 2);
+    form_start_y = @max(form_start_y, constants.margin + 60); // Leave room for title
+
+    // Center horizontally
+    var input_box_x = @divTrunc((screen_width - safe_input_width), 2);
+    input_box_x = @max(input_box_x, constants.margin);
+
+    // Question input box
+    const input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(form_start_y)), .width = @as(f32, @floatFromInt(safe_input_width)), .height = types.INPUT_BOX_HEIGHT };
+
+    // Tags input box
+    const tags_input_y = form_start_y + types.INPUT_BOX_HEIGHT + form_element_spacing;
+    const tags_input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(tags_input_y)), .width = @as(f32, @floatFromInt(safe_input_width)), .height = types.INPUT_BOX_HEIGHT };
+
+    // Answer selection buttons (true/false) - center them like answering mode
+    const answer_buttons_y = tags_input_y + types.INPUT_BOX_HEIGHT + form_element_spacing;
+    const total_answer_button_width = submit_button_w * 2 + 20; // 20px gap between buttons
+    const answer_buttons_x = input_box_x + @divTrunc(safe_input_width - @as(i32, @intFromFloat(total_answer_button_width)), 2);
+    const submit_true_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(answer_buttons_x)), .y = @as(f32, @floatFromInt(answer_buttons_y)), .width = submit_button_w, .height = submit_button_h };
+    const submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(answer_buttons_x)) + submit_button_w + 20, .y = @as(f32, @floatFromInt(answer_buttons_y)), .width = submit_button_w, .height = submit_button_h };
+
+    // Submit button (centered like confirm button in answering mode)
+    const submit_button_y = answer_buttons_y + @as(i32, @intFromFloat(submit_button_h)) + form_element_spacing;
+    var submit_button_x = @divTrunc((screen_width - @as(i32, @intFromFloat(constants.confirm_w))), 2);
+    submit_button_x = @max(submit_button_x, constants.margin);
+    const submit_question_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(submit_button_x)), .y = @as(f32, @floatFromInt(submit_button_y)), .width = constants.confirm_w, .height = constants.confirm_h };
+
+    // Back button (top left corner) - wider to accommodate text
+    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 90, .height = 40 };
 
     return UILayout{
         .screen_width = screen_width,
@@ -200,6 +239,10 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
         .answer_btn = answer_btn,
         .input_box = input_box,
         .back_btn = back_btn,
+        .tags_input_box = tags_input_box,
+        .submit_true_btn = submit_true_btn,
+        .submit_false_btn = submit_false_btn,
+        .submit_question_btn = submit_question_btn,
     };
 }
 
@@ -267,14 +310,47 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
     const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = side_panel_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // Input box (centered in question area)
-    const input_box_x = question_x;
-    var input_box_y = question_text_y + types.MEDIUM_SPACING;
-    input_box_y = @min(@max(input_box_y, constants.margin), screen_height - types.INPUT_BOX_HEIGHT - constants.margin);
-    const input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(input_box_y)), .width = @min(@as(f32, @floatFromInt(types.INPUT_BOX_WIDTH)), @as(f32, @floatFromInt(question_area_width)) - 2.0 * @as(f32, @floatFromInt(constants.margin))), .height = types.INPUT_BOX_HEIGHT };
+    // Submit form layout for horizontal mode - use same centering approach
+    const available_question_width = question_area_width - (constants.margin * 2);
+    const safe_h_input_width = @min(types.INPUT_BOX_WIDTH, available_question_width);
+    const h_form_element_spacing = types.ELEMENT_SPACING;
+    const h_submit_button_w = constants.button_w * 0.7;
+    const h_submit_button_h = constants.button_h * 0.7;
 
-    // Back button (top left corner)
-    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 40, .height = 40 };
+    // Calculate total form height for horizontal mode
+    const h_form_height = types.INPUT_BOX_HEIGHT + h_form_element_spacing +
+        types.INPUT_BOX_HEIGHT + h_form_element_spacing +
+        @as(i32, @intFromFloat(h_submit_button_h)) + h_form_element_spacing +
+        @as(i32, @intFromFloat(constants.confirm_h));
+
+    // Center the form in the question area
+    var h_form_start_y = calculated_ui_start_y + @divTrunc((calculated_ui_block_height - h_form_height), 2);
+    h_form_start_y = @max(h_form_start_y, constants.margin + 60);
+
+    const input_box_x = question_x + @divTrunc((available_question_width - safe_h_input_width), 2);
+
+    // Question input box
+    const input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(h_form_start_y)), .width = @as(f32, @floatFromInt(safe_h_input_width)), .height = types.INPUT_BOX_HEIGHT };
+
+    // Tags input box
+    const h_tags_input_y = h_form_start_y + types.INPUT_BOX_HEIGHT + h_form_element_spacing;
+    const h_tags_input_box = rl.Rectangle{ .x = @as(f32, @floatFromInt(input_box_x)), .y = @as(f32, @floatFromInt(h_tags_input_y)), .width = @as(f32, @floatFromInt(safe_h_input_width)), .height = types.INPUT_BOX_HEIGHT };
+
+    // Answer selection buttons (centered in question area)
+    const h_answer_buttons_y = h_tags_input_y + types.INPUT_BOX_HEIGHT + h_form_element_spacing;
+    const h_total_answer_button_width = h_submit_button_w * 2 + 20;
+    const h_answer_buttons_x = input_box_x + @divTrunc(safe_h_input_width - @as(i32, @intFromFloat(h_total_answer_button_width)), 2);
+    const h_submit_true_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_answer_buttons_x)), .y = @as(f32, @floatFromInt(h_answer_buttons_y)), .width = h_submit_button_w, .height = h_submit_button_h };
+    const h_submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_answer_buttons_x)) + h_submit_button_w + 20, .y = @as(f32, @floatFromInt(h_answer_buttons_y)), .width = h_submit_button_w, .height = h_submit_button_h };
+
+    // Submit button (centered in question area like confirm button)
+    const h_submit_button_y = h_answer_buttons_y + @as(i32, @intFromFloat(h_submit_button_h)) + h_form_element_spacing;
+    var h_submit_button_x = question_x + @divTrunc((actual_question_width - @as(i32, @intFromFloat(constants.confirm_w))), 2);
+    h_submit_button_x = @max(h_submit_button_x, constants.margin);
+    const h_submit_question_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_submit_button_x)), .y = @as(f32, @floatFromInt(h_submit_button_y)), .width = constants.confirm_w, .height = constants.confirm_h };
+
+    // Back button (top left corner) - wider to accommodate text
+    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 90, .height = 40 };
 
     // Calculate dummy values for compatibility
     const ui_block_height = confirm_button_y + @as(i32, @intFromFloat(constants.confirm_h)) - question_y;
@@ -299,6 +375,10 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
         .answer_btn = answer_btn,
         .input_box = input_box,
         .back_btn = back_btn,
+        .tags_input_box = h_tags_input_box,
+        .submit_true_btn = h_submit_true_btn,
+        .submit_false_btn = h_submit_false_btn,
+        .submit_question_btn = h_submit_question_btn,
     };
 }
 
@@ -530,53 +610,169 @@ pub fn drawFinishedScreen(state: *types.GameState, layout: UILayout) void {
 pub fn drawSubmittingScreen(state: *types.GameState, layout: UILayout) void {
     const constants = getResponsiveConstants();
 
-    // Title
+    // Title (positioned higher up)
+    const title_y = constants.margin + 20;
     const title_text = "Submit your own question!";
     const title_width = rl.measureText(title_text, constants.large_font);
-    rl.drawText(title_text, @divTrunc((layout.screen_width - title_width), 2), layout.question_y, constants.large_font, state.fg_color);
+    rl.drawText(title_text, @divTrunc((layout.screen_width - title_width), 2), title_y, constants.large_font, state.fg_color);
 
     // Instructions
-    const instructions = "Ask a true/false question for other players";
+    const instructions = "Fill out all fields below";
     const instructions_width = rl.measureText(instructions, constants.small_font);
-    rl.drawText(instructions, @divTrunc((layout.screen_width - instructions_width), 2), layout.question_y + constants.large_font + 10, constants.small_font, state.fg_color);
+    rl.drawText(instructions, @divTrunc((layout.screen_width - instructions_width), 2), title_y + constants.large_font + 10, constants.small_font, state.fg_color);
 
-    // Draw input box
+    // Question label and input box
+    const question_label = "Question:";
+    rl.drawText(question_label, @as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)) - 25, constants.small_font, state.fg_color);
+
     const input_box_color = if (state.input_active) types.accent else state.fg_color;
     rl.drawRectangleLinesEx(layout.input_box, types.INPUT_BORDER, input_box_color);
 
-    const input_text = if (state.input_len > 0) @as([:0]const u8, @ptrCast(&state.input_buffer)) else "Type your question here...";
-    const text_color = if (state.input_len > 0) state.fg_color else rl.Color{ .r = 150, .g = 150, .b = 150, .a = 255 };
-    rl.drawText(input_text, @as(i32, @intFromFloat(layout.input_box.x)) + types.TEXT_PADDING, @as(i32, @intFromFloat(layout.input_box.y)) + types.TEXT_PADDING, constants.small_font, text_color);
+    const input_text = if (state.input_len > 0) @as([:0]const u8, @ptrCast(state.input_buffer[0..state.input_len :0])) else "";
+    rl.drawText(input_text, @as(i32, @intFromFloat(layout.input_box.x)) + types.TEXT_PADDING, @as(i32, @intFromFloat(layout.input_box.y)) + types.TEXT_PADDING, constants.small_font, state.fg_color);
 
-    // Draw cursor if input is active
+    // Draw blinking cursor for question input
     if (state.input_active and (@mod(rl.getTime() * 2.0, 2.0) < 1.0)) {
         const cursor_x = @as(i32, @intFromFloat(layout.input_box.x)) + types.TEXT_PADDING + rl.measureText(input_text, constants.small_font);
-        rl.drawRectangle(cursor_x, @as(i32, @intFromFloat(layout.input_box.y)) + types.TEXT_PADDING, types.CURSOR_WIDTH, types.CURSOR_HEIGHT, state.fg_color);
+        rl.drawText("|", cursor_x, @as(i32, @intFromFloat(layout.input_box.y)) + types.TEXT_PADDING, constants.small_font, state.fg_color);
     }
 
-    // Submit button for the question (only show if there's input)
-    if (state.input_len > 5) { // Minimum question length
-        const submit_question_y = @as(i32, @intFromFloat(layout.input_box.y)) + types.INPUT_BOX_HEIGHT + 20;
-        const submit_question_rect = rl.Rectangle{ .x = layout.input_box.x, .y = @as(f32, @floatFromInt(submit_question_y)), .width = constants.confirm_w, .height = constants.confirm_h };
+    // Tags label and input box
+    const tags_label = "Tags (comma-separated):";
+    rl.drawText(tags_label, @as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)) - 25, constants.small_font, state.fg_color);
 
-        // Calculate responsive text positioning
-        const send_text_width = rl.measureText("SEND QUESTION", constants.medium_font);
-        const send_text_x = @as(i32, @intFromFloat(submit_question_rect.x)) + @divTrunc(@as(i32, @intFromFloat(submit_question_rect.width)) - send_text_width, 2);
-        const send_text_y = submit_question_y + @divTrunc(@as(i32, @intFromFloat(submit_question_rect.height)) - constants.medium_font, 2);
+    const tags_box_color = if (state.tags_input_active) types.accent else state.fg_color;
+    rl.drawRectangleLinesEx(layout.tags_input_box, types.INPUT_BORDER, tags_box_color);
 
-        rl.drawRectangleRec(submit_question_rect, types.accent);
-        rl.drawText("SEND QUESTION", send_text_x, send_text_y, constants.medium_font, .white);
+    // Use a safe approach for tags text rendering
+    if (state.tags_input_len > 0) {
+        // Create a temporary null-terminated buffer for rendering
+        var temp_buffer: [257]u8 = undefined; // 256 + 1 for null terminator
+        const safe_len = @min(state.tags_input_len, 256);
+        @memcpy(temp_buffer[0..safe_len], state.tags_input_buffer[0..safe_len]);
+        temp_buffer[safe_len] = 0; // Null terminate
+        const tags_text: [:0]const u8 = @ptrCast(temp_buffer[0..safe_len :0]);
+        rl.drawText(tags_text, @as(i32, @intFromFloat(layout.tags_input_box.x)) + types.TEXT_PADDING, @as(i32, @intFromFloat(layout.tags_input_box.y)) + types.TEXT_PADDING, constants.small_font, state.fg_color);
     }
 
-    // Back arrow button (top left corner)
+    // Draw blinking cursor for tags input
+    if (state.tags_input_active and (@mod(rl.getTime() * 2.0, 2.0) < 1.0)) {
+        // Calculate cursor position based on current tags text
+        var cursor_x = @as(i32, @intFromFloat(layout.tags_input_box.x)) + types.TEXT_PADDING;
+        if (state.tags_input_len > 0) {
+            // Create temporary buffer to measure text width
+            var temp_buffer: [257]u8 = undefined;
+            const safe_len = @min(state.tags_input_len, 256);
+            @memcpy(temp_buffer[0..safe_len], state.tags_input_buffer[0..safe_len]);
+            temp_buffer[safe_len] = 0;
+            const tags_text_for_cursor: [:0]const u8 = @ptrCast(temp_buffer[0..safe_len :0]);
+            cursor_x += rl.measureText(tags_text_for_cursor, constants.small_font);
+        }
+        rl.drawText("|", cursor_x, @as(i32, @intFromFloat(layout.tags_input_box.y)) + types.TEXT_PADDING, constants.small_font, state.fg_color);
+    }
+
+    // Answer label and buttons
+    const answer_label = "Correct answer:";
+    rl.drawText(answer_label, @as(i32, @intFromFloat(layout.submit_true_btn.x)), @as(i32, @intFromFloat(layout.submit_true_btn.y)) - 25, constants.small_font, state.fg_color);
+
+    // TRUE button
+    const true_selected = state.submit_answer_selected == true;
+    rl.drawRectangleLinesEx(layout.submit_true_btn, if (true_selected) types.THICK_BORDER else types.THIN_BORDER, if (true_selected) types.accent else state.fg_color);
+    const true_text_width = rl.measureText("TRUE", constants.medium_font);
+    const true_text_x = @as(i32, @intFromFloat(layout.submit_true_btn.x)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_true_btn.width)) - true_text_width, 2);
+    const true_text_y = @as(i32, @intFromFloat(layout.submit_true_btn.y)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_true_btn.height)) - constants.medium_font, 2);
+    rl.drawText("TRUE", true_text_x, true_text_y, constants.medium_font, state.fg_color);
+
+    // FALSE button
+    const false_selected = state.submit_answer_selected == false;
+    rl.drawRectangleLinesEx(layout.submit_false_btn, if (false_selected) types.THICK_BORDER else types.THIN_BORDER, if (false_selected) types.accent else state.fg_color);
+    const false_text_width = rl.measureText("FALSE", constants.medium_font);
+    const false_text_x = @as(i32, @intFromFloat(layout.submit_false_btn.x)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_false_btn.width)) - false_text_width, 2);
+    const false_text_y = @as(i32, @intFromFloat(layout.submit_false_btn.y)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_false_btn.height)) - constants.medium_font, 2);
+    rl.drawText("FALSE", false_text_x, false_text_y, constants.medium_font, state.fg_color);
+
+    // Submit button (always visible, but only enabled when all fields are filled)
+    const all_fields_filled = state.input_len >= 5 and state.submit_answer_selected != null and state.tags_input_len > 0;
+    const submit_color = if (all_fields_filled) types.accent else rl.Color{ .r = 120, .g = 120, .b = 120, .a = 255 };
+    rl.drawRectangleRec(layout.submit_question_btn, submit_color);
+
+    const submit_text = "SEND QUESTION";
+    const submit_text_width = rl.measureText(submit_text, constants.medium_font);
+    const submit_text_x = @as(i32, @intFromFloat(layout.submit_question_btn.x)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_question_btn.width)) - submit_text_width, 2);
+    const submit_text_y = @as(i32, @intFromFloat(layout.submit_question_btn.y)) + @divTrunc(@as(i32, @intFromFloat(layout.submit_question_btn.height)) - constants.medium_font, 2);
+    rl.drawText(submit_text, submit_text_x, submit_text_y, constants.medium_font, .white);
+
+    // Back button (top left corner)
     rl.drawRectangleLinesEx(layout.back_btn, 2, state.fg_color);
 
-    // Draw a simple left arrow
-    const arrow_center_x = @as(i32, @intFromFloat(layout.back_btn.x)) + 20;
-    const arrow_center_y = @as(i32, @intFromFloat(layout.back_btn.y)) + 20;
+    // Center the "< Back" text within the button
+    const back_full_text = "< Back";
+    const back_text_width = rl.measureText(back_full_text, constants.small_font);
+    const back_text_x = @as(i32, @intFromFloat(layout.back_btn.x)) + @divTrunc(@as(i32, @intFromFloat(layout.back_btn.width)) - back_text_width, 2);
+    const back_text_y = @as(i32, @intFromFloat(layout.back_btn.y)) + @divTrunc(@as(i32, @intFromFloat(layout.back_btn.height)) - constants.small_font, 2);
+    rl.drawText(back_full_text, back_text_x, back_text_y, constants.small_font, state.fg_color);
+}
 
-    // Arrow lines (simple ASCII-style arrow)
-    rl.drawText("<", arrow_center_x - 8, arrow_center_y - 12, constants.large_font, state.fg_color);
+pub fn drawSubmitThanksScreen(state: *types.GameState, layout: UILayout) void {
+    const constants = getResponsiveConstants();
+
+    // Title
+    const title_text = "Thank you for your submission!";
+    const title_font_size = constants.large_font;
+    const title_width = rl.measureText(title_text, title_font_size);
+    const title_x = @divTrunc((layout.screen_width - title_width), 2);
+    const title_y = layout.question_y - 60;
+    rl.drawText(title_text, title_x, title_y, title_font_size, state.fg_color);
+
+    // Message
+    const message_text = "Your question has been submitted for review.";
+    const message_font_size = constants.medium_font;
+    const message_width = rl.measureText(message_text, message_font_size);
+    const message_x = @divTrunc((layout.screen_width - message_width), 2);
+    const message_y = title_y + title_font_size + types.SMALL_SPACING;
+    rl.drawText(message_text, message_x, message_y, message_font_size, state.fg_color);
+
+    // Create custom button layout with proper spacing
+    const button_spacing = types.ELEMENT_SPACING + 20; // Extra buffer space between buttons
+    const button_width = constants.confirm_w;
+    const button_height = constants.confirm_h;
+
+    // Calculate total height needed for both buttons with spacing
+    const total_buttons_height = @as(i32, @intFromFloat(button_height * 2)) + button_spacing;
+
+    // Center the button group vertically in the available space below the message
+    const available_space_start = message_y + message_font_size + types.ELEMENT_SPACING;
+    const available_space_height = layout.screen_height - available_space_start - constants.margin;
+    const buttons_start_y = available_space_start + @divTrunc((available_space_height - total_buttons_height), 2);
+
+    // Ensure buttons don't go too high or too low
+    const safe_buttons_start_y = @max(buttons_start_y, available_space_start);
+    const safe_buttons_start_y_final = @min(safe_buttons_start_y, layout.screen_height - total_buttons_height - constants.margin);
+
+    // Submit Another button (first button)
+    const submit_button_x = @divTrunc((layout.screen_width - @as(i32, @intFromFloat(button_width))), 2);
+    const submit_button_y = safe_buttons_start_y_final;
+    const submit_button_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(submit_button_x)), .y = @as(f32, @floatFromInt(submit_button_y)), .width = button_width, .height = button_height };
+
+    rl.drawRectangleRec(submit_button_rect, state.fg_color);
+    const submit_text = "SUBMIT ANOTHER";
+    const submit_font_size = constants.medium_font;
+    const submit_text_width = rl.measureText(submit_text, submit_font_size);
+    const submit_text_x = submit_button_x + @divTrunc(@as(i32, @intFromFloat(button_width)) - submit_text_width, 2);
+    const submit_text_y = submit_button_y + @divTrunc(@as(i32, @intFromFloat(button_height)) - submit_font_size, 2);
+    rl.drawText(submit_text, submit_text_x, submit_text_y, submit_font_size, state.bg_color);
+
+    // Back to Game button (second button, with buffer space)
+    const back_button_x = submit_button_x;
+    const back_button_y = submit_button_y + @as(i32, @intFromFloat(button_height)) + button_spacing;
+    const back_button_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(back_button_x)), .y = @as(f32, @floatFromInt(back_button_y)), .width = button_width, .height = button_height };
+
+    rl.drawRectangleRec(back_button_rect, state.fg_color);
+    const back_text = "BACK TO GAME";
+    const back_text_width = rl.measureText(back_text, submit_font_size);
+    const back_text_x = back_button_x + @divTrunc(@as(i32, @intFromFloat(button_width)) - back_text_width, 2);
+    const back_text_y = back_button_y + @divTrunc(@as(i32, @intFromFloat(button_height)) - submit_font_size, 2);
+    rl.drawText(back_text, back_text_x, back_text_y, submit_font_size, state.bg_color);
 }
 
 pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
@@ -725,16 +921,21 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
         }
     }
 
-    // COLOR button (top of stack)
-    rl.drawRectangleRec(layout.randomize_btn, state.fg_color);
-    const color_text = "COLOR";
-    const color_font_size = constants.small_font;
-    const color_text_width = rl.measureText(color_text, color_font_size);
-    const color_text_x = @as(i32, @intFromFloat(layout.randomize_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - color_text_width), 2);
-    const color_text_y = @as(i32, @intFromFloat(layout.randomize_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - color_font_size), 2);
-    rl.drawText(color_text, color_text_x, color_text_y, color_font_size, state.bg_color);
+    // Hide COLOR and NEW GAME buttons in submit mode (especially for vertical orientation)
+    const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
 
-    // SUBMIT button (bottom of stack, only for qualified users)
+    // COLOR button (top of stack) - hide in submit mode
+    if (!hide_side_buttons) {
+        rl.drawRectangleRec(layout.randomize_btn, state.fg_color);
+        const color_text = "COLOR";
+        const color_font_size = constants.small_font;
+        const color_text_width = rl.measureText(color_text, color_font_size);
+        const color_text_x = @as(i32, @intFromFloat(layout.randomize_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - color_text_width), 2);
+        const color_text_y = @as(i32, @intFromFloat(layout.randomize_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - color_font_size), 2);
+        rl.drawText(color_text, color_text_x, color_text_y, color_font_size, state.bg_color);
+    }
+
+    // SUBMIT button (bottom of stack, only for qualified users) - keep visible always when qualified
     if (shouldShowSubmitButton(state)) {
         rl.drawRectangleRec(layout.submit_btn, state.fg_color);
         const submit_text = "SUBMIT";
@@ -744,13 +945,15 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
         rl.drawText(submit_text, submit_text_x, submit_text_y, constants.small_font, state.bg_color);
     }
 
-    // ANSWER button (middle of stack)
-    rl.drawRectangleRec(layout.answer_btn, state.fg_color);
-    const answer_text = "ANSWER";
-    const answer_text_width = rl.measureText(answer_text, constants.small_font);
-    const answer_text_x = @as(i32, @intFromFloat(layout.answer_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - answer_text_width), 2);
-    const answer_text_y = @as(i32, @intFromFloat(layout.answer_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
-    rl.drawText(answer_text, answer_text_x, answer_text_y, constants.small_font, state.bg_color);
+    // NEW GAME button (middle of stack) - hide in submit mode
+    if (!hide_side_buttons) {
+        rl.drawRectangleRec(layout.answer_btn, state.fg_color);
+        const new_game_text = "NEW GAME";
+        const new_game_text_width = rl.measureText(new_game_text, constants.small_font);
+        const new_game_text_x = @as(i32, @intFromFloat(layout.answer_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - new_game_text_width), 2);
+        const new_game_text_y = @as(i32, @intFromFloat(layout.answer_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
+        rl.drawText(new_game_text, new_game_text_x, new_game_text_y, constants.small_font, state.bg_color);
+    }
 
     // Draw tags for high-trust users during answering
     if (state.user_trust >= 0.85 and state.game_state == .Answering) {
@@ -786,6 +989,9 @@ pub fn draw(state: *types.GameState) void {
         },
         .Submitting => {
             drawSubmittingScreen(state, layout);
+        },
+        .SubmitThanks => {
+            drawSubmitThanksScreen(state, layout);
         },
     }
 

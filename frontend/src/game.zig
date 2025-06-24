@@ -13,55 +13,136 @@ const user = @import("user.zig");
 
 fn submitQuestion(state: *types.GameState) void {
     if (state.input_len < 5) return; // Minimum question length
+    if (state.submit_answer_selected == null) return; // Answer is required
+    if (state.tags_input_len == 0) return; // Tags are required
 
-    // Create a question submission JSON
-    var json_buffer: [1024]u8 = undefined;
+    // Use a much larger buffer for JSON and tag storage
+    var json_buffer: [4096]u8 = undefined;
+    var tag_storage_buffer: [1024]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&json_buffer);
+    var tag_fba = std.heap.FixedBufferAllocator.init(&tag_storage_buffer);
     const allocator = fba.allocator();
+    const tag_allocator = tag_fba.allocator();
 
-    // Get the question text
+    // Get the question text and tags (ensure null termination)
     const question_text = state.input_buffer[0..state.input_len];
+    const tags_text = state.tags_input_buffer[0..state.tags_input_len];
 
-    // Create submission data
+    // Safety check: If tags_text contains JSON-like content, it's corrupted
+    if (std.mem.indexOf(u8, tags_text, "\"question\"") != null or
+        std.mem.indexOf(u8, tags_text, "{") != null or
+        std.mem.indexOf(u8, tags_text, "}") != null)
+    {
+
+        // Use fallback tags
+        var tags_list = std.ArrayList([]const u8).init(allocator);
+        defer tags_list.deinit();
+
+        const fallback_tag = tag_allocator.dupe(u8, "user-submitted") catch {
+            return;
+        };
+        tags_list.append(fallback_tag) catch {
+            return;
+        };
+
+        // Continue with submission using fallback tag
+        const submission = .{
+            .question = question_text,
+            .answer = state.submit_answer_selected.?,
+            .title = "",
+            .passage = "",
+            .tags = tags_list.items,
+        };
+
+        const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch {
+            return;
+        };
+
+        const user_id_slice = user.getUserIDSlice();
+        utils.js.propose_question(json_str.ptr, json_str.len, user_id_slice.ptr, user_id_slice.len, onQuestionSubmitted);
+
+        // Clear input and go to thank you screen
+        state.input_len = 0;
+        state.input_buffer[0] = 0;
+        state.input_active = false;
+        state.tags_input_len = 0;
+        state.tags_input_buffer[0] = 0;
+        state.tags_input_active = false;
+        state.submit_answer_selected = null;
+
+        // Go to thank you screen
+        state.game_state = .SubmitThanks;
+        return;
+    }
+
+    // Normal tag parsing (when not corrupted)
+    var tags_list = std.ArrayList([]const u8).init(allocator);
+    defer tags_list.deinit();
+
+    // Parse tags - split by comma and create persistent copies
+    var tag_iter = std.mem.splitSequence(u8, tags_text, ",");
+    while (tag_iter.next()) |tag| {
+        const trimmed = std.mem.trim(u8, tag, " \t\n\r");
+        if (trimmed.len > 0 and trimmed.len < 64) { // Reasonable tag length limit
+            // Create a persistent copy of the trimmed tag
+            const tag_copy = tag_allocator.dupe(u8, trimmed) catch {
+                continue;
+            };
+            tags_list.append(tag_copy) catch {
+                continue;
+            };
+        }
+    }
+
+    // Ensure we have at least one tag
+    if (tags_list.items.len == 0) {
+        const default_tag = tag_allocator.dupe(u8, "user-submitted") catch {
+            return;
+        };
+        tags_list.append(default_tag) catch {
+            return;
+        };
+    }
+
+    // Create submission data matching the backend API
     const submission = .{
         .question = question_text,
-        .submitter_id = utils.js.get_session_id_slice(),
-        .suggested_answer = true, // Default to true, moderators can change
-        .tags = &[_][]const u8{"user-submitted"},
+        .answer = state.submit_answer_selected.?,
+        .title = "", // Optional - empty for now
+        .passage = "", // Optional - empty for now
+        .tags = tags_list.items,
     };
 
-    const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch |err| {
-        std.debug.print("❌ Failed to serialize question submission: {any}\n", .{err});
+    // Try to stringify with error handling
+    const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch {
         return;
     };
-
-    std.debug.print("📝 Submitting question: {s}\n", .{json_str});
 
     // Call the propose_question API
     const user_id_slice = user.getUserIDSlice();
     utils.js.propose_question(json_str.ptr, json_str.len, user_id_slice.ptr, user_id_slice.len, onQuestionSubmitted);
 
-    // Clear input and show feedback
+    // Clear input and show thank you screen
     state.input_len = 0;
     state.input_buffer[0] = 0;
     state.input_active = false;
+    state.tags_input_len = 0;
+    state.tags_input_buffer[0] = 0;
+    state.tags_input_active = false;
+    state.submit_answer_selected = null;
 
-    // Go back to previous state
-    if (state.session.finished) {
-        state.game_state = .Finished;
-    } else {
-        state.game_state = .Answering;
-    }
+    // Go to thank you screen instead of back to previous state
+    state.game_state = .SubmitThanks;
 }
 
 // Callback for question submission
 export fn onQuestionSubmitted(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
     if (success == 1) {
-        std.debug.print("✅ Question submitted successfully!\n", .{});
         // Could show a success message to the user here
     } else {
         const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
-        std.debug.print("❌ Failed to submit question: {s}\n", .{error_msg});
+        // Could show error message to user here
+        _ = error_msg;
     }
 }
 
@@ -77,7 +158,6 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
 
     // Initialize user ID management
     user.initUserID(&state.prng);
-    std.debug.print("🔑 User ID initialized: {s}\n", .{user.getUserID()});
 
     api.startAuthentication(state);
     state.input_active = false;
@@ -110,7 +190,6 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
         const current_time = std.time.timestamp();
         const loading_duration = current_time - state.loading_start_time;
         if (loading_duration > 10) {
-            std.debug.print("⏰ Loading timeout after {} seconds, using fallback. Game state: {any}, Auth: {}\n", .{ loading_duration, state.game_state, state.auth_initialized });
             state.loading_message = "Connection timeout. Using offline mode.";
             api.initSessionWithFallback(state);
         } else if (loading_duration > 5) {
@@ -134,7 +213,6 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
 
         // Emergency state fix for mobile - if stuck in loading for too long, force answering state
         if (loading_duration > 12 and is_mobile) {
-            std.debug.print("🚨 Emergency mobile fix: forcing answering state\n", .{});
             if (state.session.questions.len == 0 or state.session.questions[0].question.len == 0) {
                 // Session not properly initialized, use fallback
                 api.initSessionWithFallback(state);
@@ -156,20 +234,104 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
         const pos = input_event.position;
         if (rl.checkCollisionPointRec(pos, layout.submit_btn) and render.shouldShowSubmitButton(state)) {
             state.game_state = .Submitting;
+            // Initialize submit form state cleanly
+            state.input_active = false;
+            state.tags_input_active = false;
+            state.input_len = 0;
+            state.input_buffer[0] = 0;
+            state.tags_input_len = 0;
+            state.tags_input_buffer[0] = 0;
+            state.submit_answer_selected = null;
         } else if (rl.checkCollisionPointRec(pos, layout.answer_btn)) {
-            api.startSession(state);
+            // NEW GAME button - only respond if not in submit mode
+            const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
+            if (!hide_side_buttons) {
+                api.startSession(state);
+            }
         } else if (state.game_state == .Submitting and rl.checkCollisionPointRec(pos, layout.input_box)) {
-            state.input_active = true;
-        } else if (state.game_state == .Submitting) {
-            // Check for submission UI buttons - get responsive constants
-            const constants = render.getResponsiveConstants();
-            const submit_question_y = @as(i32, @intFromFloat(layout.input_box.y)) + types.INPUT_BOX_HEIGHT + 20;
-            const submit_question_rect = rl.Rectangle{ .x = layout.input_box.x, .y = @as(f32, @floatFromInt(submit_question_y)), .width = constants.confirm_w, .height = constants.confirm_h };
+            // Save current input value if we're switching from tags to question
+            if (state.tags_input_active and utils.js.isTextInputFocused()) {
+                const current_text = utils.js.getTextInputValueSlice();
+                const copy_len = @min(current_text.len, state.tags_input_buffer.len - 1);
+                @memcpy(state.tags_input_buffer[0..copy_len], current_text[0..copy_len]);
+                state.tags_input_len = copy_len;
+                state.tags_input_buffer[state.tags_input_len] = 0;
+            }
 
-            if (state.input_len > 5 and rl.checkCollisionPointRec(pos, submit_question_rect)) {
-                // Submit the question
-                submitQuestion(state);
+            state.input_active = true;
+            state.tags_input_active = false;
+
+            // Show text input field for question input and load current question text
+            _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)), @as(i32, @intFromFloat(layout.input_box.width)), @as(i32, @intFromFloat(layout.input_box.height)), "Enter your question...");
+
+            // Set the input value to current question text
+            const question_text = state.input_buffer[0..state.input_len];
+            _ = utils.js.setTextInputValueFromString(question_text);
+        } else if (state.game_state == .Submitting and rl.checkCollisionPointRec(pos, layout.tags_input_box)) {
+            // Save current input value if we're switching from question to tags
+            if (state.input_active and utils.js.isTextInputFocused()) {
+                const current_text = utils.js.getTextInputValueSlice();
+                const copy_len = @min(current_text.len, state.input_buffer.len - 1);
+                @memcpy(state.input_buffer[0..copy_len], current_text[0..copy_len]);
+                state.input_len = copy_len;
+                state.input_buffer[state.input_len] = 0;
+            }
+
+            state.tags_input_active = true;
+            state.input_active = false;
+
+            // Show text input field for tags input and load current tags text
+            _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)), @as(i32, @intFromFloat(layout.tags_input_box.width)), @as(i32, @intFromFloat(layout.tags_input_box.height)), "Enter tags (comma separated)...");
+
+            // Set the input value to current tags text
+            const tags_text = state.tags_input_buffer[0..state.tags_input_len];
+            _ = utils.js.setTextInputValueFromString(tags_text);
+        } else if (state.game_state == .Submitting) {
+            // Check for answer selection buttons
+            if (rl.checkCollisionPointRec(pos, layout.submit_true_btn)) {
+                state.submit_answer_selected = true;
+            } else if (rl.checkCollisionPointRec(pos, layout.submit_false_btn)) {
+                state.submit_answer_selected = false;
+            } else if (rl.checkCollisionPointRec(pos, layout.submit_question_btn)) {
+                // Save current input value before submitting
+                if (utils.js.isTextInputFocused()) {
+                    const current_text = utils.js.getTextInputValueSlice();
+                    if (state.input_active) {
+                        const copy_len = @min(current_text.len, state.input_buffer.len - 1);
+                        @memcpy(state.input_buffer[0..copy_len], current_text[0..copy_len]);
+                        state.input_len = copy_len;
+                        state.input_buffer[state.input_len] = 0;
+                    } else if (state.tags_input_active) {
+                        const copy_len = @min(current_text.len, state.tags_input_buffer.len - 1);
+                        @memcpy(state.tags_input_buffer[0..copy_len], current_text[0..copy_len]);
+                        state.tags_input_len = copy_len;
+                        state.tags_input_buffer[state.tags_input_len] = 0;
+                    }
+                }
+
+                // Submit the question - check all required fields
+                if (state.input_len >= 5 and state.submit_answer_selected != null and state.tags_input_len > 0) {
+                    submitQuestion(state);
+                    // Hide the text input after submission
+                    _ = utils.js.hideTextInput();
+                }
             } else if (rl.checkCollisionPointRec(pos, layout.back_btn)) {
+                // Save current input value before going back
+                if (utils.js.isTextInputFocused()) {
+                    const current_text = utils.js.getTextInputValueSlice();
+                    if (state.input_active) {
+                        const copy_len = @min(current_text.len, state.input_buffer.len - 1);
+                        @memcpy(state.input_buffer[0..copy_len], current_text[0..copy_len]);
+                        state.input_len = copy_len;
+                        state.input_buffer[state.input_len] = 0;
+                    } else if (state.tags_input_active) {
+                        const copy_len = @min(current_text.len, state.tags_input_buffer.len - 1);
+                        @memcpy(state.tags_input_buffer[0..copy_len], current_text[0..copy_len]);
+                        state.tags_input_len = copy_len;
+                        state.tags_input_buffer[state.tags_input_len] = 0;
+                    }
+                }
+
                 // Go back to previous state
                 if (state.session.finished) {
                     state.game_state = .Finished;
@@ -179,8 +341,63 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.input_active = false;
                 state.input_len = 0;
                 state.input_buffer[0] = 0;
-            } else {
+                state.tags_input_active = false;
+                state.tags_input_len = 0;
+                state.tags_input_buffer[0] = 0;
+                state.submit_answer_selected = null;
+                // Hide the text input when going back
+                _ = utils.js.hideTextInput();
+            }
+        } else if (state.game_state == .SubmitThanks) {
+            // Handle SubmitThanks state - check for continue/submit another buttons
+            // Calculate the same button positions as in drawSubmitThanksScreen
+            const constants = render.getResponsiveConstants();
+            const button_spacing = types.ELEMENT_SPACING + 20; // Extra buffer space between buttons
+            const button_width = constants.confirm_w;
+            const button_height = constants.confirm_h;
+
+            // Calculate total height needed for both buttons with spacing
+            const total_buttons_height = @as(i32, @intFromFloat(button_height * 2)) + button_spacing;
+
+            // Center the button group vertically in the available space below the message
+            const title_y = layout.question_y - 60;
+            const message_y = title_y + constants.large_font + types.SMALL_SPACING;
+            const available_space_start = message_y + constants.medium_font + types.ELEMENT_SPACING;
+            const available_space_height = layout.screen_height - available_space_start - constants.margin;
+            const buttons_start_y = available_space_start + @divTrunc((available_space_height - total_buttons_height), 2);
+
+            // Ensure buttons don't go too high or too low
+            const safe_buttons_start_y = @max(buttons_start_y, available_space_start);
+            const safe_buttons_start_y_final = @min(safe_buttons_start_y, layout.screen_height - total_buttons_height - constants.margin);
+
+            // Submit Another button (first button)
+            const submit_button_x = @divTrunc((layout.screen_width - @as(i32, @intFromFloat(button_width))), 2);
+            const submit_button_y = safe_buttons_start_y_final;
+            const submit_button_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(submit_button_x)), .y = @as(f32, @floatFromInt(submit_button_y)), .width = button_width, .height = button_height };
+
+            // Back to Game button (second button, with buffer space)
+            const back_button_x = submit_button_x;
+            const back_button_y = submit_button_y + @as(i32, @intFromFloat(button_height)) + button_spacing;
+            const back_button_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(back_button_x)), .y = @as(f32, @floatFromInt(back_button_y)), .width = button_width, .height = button_height };
+
+            if (rl.checkCollisionPointRec(pos, submit_button_rect)) {
+                // "Submit Another" button - go back to submitting state
+                state.game_state = .Submitting;
+                // Initialize submit form state cleanly
                 state.input_active = false;
+                state.tags_input_active = false;
+                state.input_len = 0;
+                state.input_buffer[0] = 0;
+                state.tags_input_len = 0;
+                state.tags_input_buffer[0] = 0;
+                state.submit_answer_selected = null;
+            } else if (rl.checkCollisionPointRec(pos, back_button_rect)) {
+                // "Back to Game" button - go back to appropriate state
+                if (state.session.finished) {
+                    state.game_state = .Finished;
+                } else {
+                    state.game_state = .Answering;
+                }
             }
         } else if (rl.checkCollisionPointRec(pos, layout.button_rect_true)) {
             state.selected = true;
@@ -196,14 +413,12 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             if (state.response.answer == state.session.questions[state.session.current].answer) state.session.correct += 1;
             state.session.current += 1;
             if (state.session.current >= 7) {
-                std.debug.print("🏁 Game completed! Transitioning to Finished state...\n", .{});
                 state.session.finished = true;
                 state.game_state = .Finished;
                 state.sessions_completed += 1; // Track completed sessions
                 state.user_session.trust = utils.calcTrustScore(state);
                 state.user_trust = state.user_session.trust; // Update user trust for UI gating
                 state.user_session.invitable = state.user_session.trust >= 0.85;
-                std.debug.print("📊 Trust score calculated: {d} (Sessions completed: {})\n", .{ state.user_session.trust, state.sessions_completed });
                 api.submitResponseBatch(&state.user_session);
                 if (state.user_session.trust >= 0.85 and !state.invited_shown) {
                     utils.showInviteModal();
@@ -217,9 +432,25 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             // Continue button clicked - start a new session
             api.startSession(state);
         } else if (rl.checkCollisionPointRec(pos, layout.randomize_btn)) {
-            const new_pal = utils.randomPalette(state);
-            state.bg_color = new_pal.bg;
-            state.fg_color = new_pal.fg;
+            // COLOR button - only respond if not in submit mode
+            const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
+            if (!hide_side_buttons) {
+                const new_pal = utils.randomPalette(state);
+                state.bg_color = new_pal.bg;
+                state.fg_color = new_pal.fg;
+            }
+        } else {
+            // Clicked outside any interactive elements
+            if (state.game_state == .Submitting) {
+                // If clicking outside input areas while in submitting state, hide text input
+                if (!rl.checkCollisionPointRec(pos, layout.input_box) and
+                    !rl.checkCollisionPointRec(pos, layout.tags_input_box))
+                {
+                    state.input_active = false;
+                    state.tags_input_active = false;
+                    _ = utils.js.hideTextInput();
+                }
+            }
         }
     }
 
@@ -259,7 +490,5 @@ pub export fn onCanvasResize(new_width: i32, new_height: i32) callconv(.C) void 
             const aspect_ratio = @as(f32, @floatFromInt(new_width)) / @as(f32, @floatFromInt(new_height));
             state.orientation = if (aspect_ratio > 1.2) .Horizontal else .Vertical;
         }
-
-        std.debug.print("🔄 Canvas resized to {}x{} (notified from JS)\n", .{ new_width, new_height });
     }
 }
