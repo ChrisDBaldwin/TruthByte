@@ -107,8 +107,8 @@ pub fn initPalettes(state: *types.GameState) void;
 - Canvas size utilities
 - Game logic helpers
 
-#### `input.zig` - Input Handling
-**Purpose**: Unified input system for mouse, touch, and keyboard
+#### `input.zig` - Input Handling & Security
+**Purpose**: Unified input system for mouse and touch with comprehensive security validation
 ```zig
 pub const InputEvent = struct {
     pressed: bool,
@@ -119,13 +119,26 @@ pub const InputEvent = struct {
 
 pub fn getInputEvent(state: *types.GameState) ?InputEvent;
 pub fn handleTextInput(state: *types.GameState) void;
+pub fn validateQuestionInput(question: []const u8, tags: []const u8) bool;
 ```
 
 **Features**:
 - Cross-platform touch/mouse input handling
 - JavaScript coordinate mapping for mobile
-- Text input processing
-- Input state tracking
+- **Comprehensive input security validation**
+- **Real-time malicious content detection**
+- **Binary injection prevention**
+- **XSS and code injection protection**
+- Input sanitization and length limits
+- Spam detection and rate limiting
+
+**Security Architecture**:
+- **Character Validation**: Only allows safe printable ASCII characters
+- **Pattern Detection**: Blocks suspicious patterns like `<script>`, `javascript:`, `eval()`
+- **Binary Content Blocking**: Prevents image data and binary injection
+- **Length Limits**: Questions 10-200 chars, tags 1-50 chars, max 5 tags
+- **Real-time Protection**: Malicious content triggers immediate field clearing
+- **Multi-layer Defense**: Frontend validation backed by server-side verification
 
 #### `api.zig` - Network & API
 **Purpose**: All network operations and API management

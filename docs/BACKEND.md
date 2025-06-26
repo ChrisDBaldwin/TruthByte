@@ -14,10 +14,26 @@ A scalable, tag-based backend system for TruthByte built on AWS Lambda and Dynam
 
 - `fetch_questions` - Returns randomized batches of questions by tag
 - `submit_answers` - Processes user answers and calculates trust scores  
-- `propose_question` - Handles user-submitted questions
+- `propose_question` - **Secure** user question submission with comprehensive validation
 - `get_user` - Retrieves user profile and statistics
 - `get_token` - Issues JWT authentication tokens
 - `auth_ping` - Validates JWT tokens (debug endpoint)
+
+### Security Features
+
+**🔒 Input Validation & Sanitization**
+- **Multi-layer Security**: Frontend + backend validation
+- **Injection Prevention**: XSS, SQL injection, code injection protection
+- **Binary Content Blocking**: Prevents image/binary data submission
+- **Content Sanitization**: Removes dangerous characters and patterns
+- **Rate Limiting**: 3 questions/hour, 10/day per user
+
+**🛡️ Security Architecture**
+- **Character Validation**: Only printable ASCII allowed
+- **Pattern Detection**: Blocks `<script>`, `javascript:`, `eval()`, etc.
+- **Length Limits**: Enforced at multiple levels
+- **Spam Detection**: Prevents repeated character abuse
+- **Real-time Threat Response**: Immediate content clearing on detection
 
 ## Structure
 
