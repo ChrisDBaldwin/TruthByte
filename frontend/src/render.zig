@@ -95,6 +95,7 @@ pub const UILayout = struct {
     randomize_btn: rl.Rectangle,
     submit_btn: rl.Rectangle,
     answer_btn: rl.Rectangle,
+    categories_btn: rl.Rectangle,
     input_box: rl.Rectangle,
     back_btn: rl.Rectangle,
     // Submit form elements
@@ -102,6 +103,9 @@ pub const UILayout = struct {
     submit_true_btn: rl.Rectangle,
     submit_false_btn: rl.Rectangle,
     submit_question_btn: rl.Rectangle,
+    // Category selection elements
+    category_buttons: [20]rl.Rectangle,
+    difficulty_buttons: [5]rl.Rectangle,
 };
 
 pub fn calculateLayout(state: *types.GameState) UILayout {
@@ -162,18 +166,22 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
 
     // Stack buttons vertically on the right side
     const button_stack_x = @as(f32, @floatFromInt(screen_width - types.BOTTOM_BUTTON_WIDTH - constants.margin));
-    const button_gap = 8; // Gap between stacked buttons
+    const button_gap = types.SIDE_BUTTON_GAP;
 
     // COLOR button (top of stack)
     const randomize_btn_y = @as(f32, @floatFromInt(constants.margin));
     const randomize_btn = rl.Rectangle{ .x = button_stack_x, .y = randomize_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // ANSWER button (middle of stack)
+    // ANSWER button (second in stack)
     const answer_btn_y = randomize_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const answer_btn = rl.Rectangle{ .x = button_stack_x, .y = answer_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
+    // CATEGORIES button (third in stack)
+    const categories_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    const categories_btn = rl.Rectangle{ .x = button_stack_x, .y = categories_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
+
     // SUBMIT button (bottom of stack)
-    const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    const submit_btn_y = categories_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = button_stack_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
     // Submit form layout - use same centering approach as answering mode
@@ -206,10 +214,10 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
 
     // Answer selection buttons (true/false) - center them like answering mode
     const answer_buttons_y = tags_input_y + types.INPUT_BOX_HEIGHT + form_element_spacing;
-    const total_answer_button_width = submit_button_w * 2 + 20; // 20px gap between buttons
+    const total_answer_button_width = submit_button_w * 2 + types.SUBMIT_ANSWER_BUTTON_GAP;
     const answer_buttons_x = input_box_x + @divTrunc(safe_input_width - @as(i32, @intFromFloat(total_answer_button_width)), 2);
     const submit_true_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(answer_buttons_x)), .y = @as(f32, @floatFromInt(answer_buttons_y)), .width = submit_button_w, .height = submit_button_h };
-    const submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(answer_buttons_x)) + submit_button_w + 20, .y = @as(f32, @floatFromInt(answer_buttons_y)), .width = submit_button_w, .height = submit_button_h };
+    const submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(answer_buttons_x)) + submit_button_w + types.SUBMIT_ANSWER_BUTTON_GAP, .y = @as(f32, @floatFromInt(answer_buttons_y)), .width = submit_button_w, .height = submit_button_h };
 
     // Submit button (centered like confirm button in answering mode)
     const submit_button_y = answer_buttons_y + @as(i32, @intFromFloat(submit_button_h)) + form_element_spacing;
@@ -217,8 +225,71 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
     submit_button_x = @max(submit_button_x, constants.margin);
     const submit_question_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(submit_button_x)), .y = @as(f32, @floatFromInt(submit_button_y)), .width = constants.confirm_w, .height = constants.confirm_h };
 
-    // Back button (top left corner) - wider to accommodate text
-    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 90, .height = 40 };
+    // Back button (top left corner)
+    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = types.BACK_BUTTON_WIDTH, .height = types.BACK_BUTTON_HEIGHT };
+
+    // Category selection layout - dynamic grid of buttons centered beneath title
+    var category_buttons: [20]rl.Rectangle = undefined;
+    var difficulty_buttons: [5]rl.Rectangle = undefined;
+
+    // Initialize category buttons in a dynamic centered grid layout
+    // Use responsive sizing based on screen width
+    const category_button_width: i32 = if (screen_width < 600) types.CATEGORY_BUTTON_WIDTH_SMALL else types.CATEGORY_BUTTON_WIDTH_LARGE;
+    const category_button_height: i32 = if (screen_width < 600) types.CATEGORY_BUTTON_HEIGHT_SMALL else types.CATEGORY_BUTTON_HEIGHT_LARGE;
+    const category_spacing: i32 = if (screen_width < 600) types.CATEGORY_SPACING_SMALL else types.CATEGORY_SPACING_LARGE;
+
+    // Calculate optimal number of categories per row based on screen width
+    const available_width = screen_width - (constants.margin * 2);
+    const max_categories_per_row = @max(1, @divTrunc(available_width, category_button_width + category_spacing));
+    // Use more categories per row on smaller screens to save vertical space
+    const max_per_row: i32 = if (screen_width < 600) types.MAX_CATEGORIES_PER_ROW_SMALL else types.MAX_CATEGORIES_PER_ROW_LARGE;
+    const categories_per_row = @min(max_categories_per_row, max_per_row);
+
+    // Calculate the grid starting position to center it
+    const title_bottom_y = constants.margin + constants.large_font + types.TITLE_SPACING;
+    const difficulty_section_height = if (screen_width < 900) types.DIFFICULTY_SECTION_HEIGHT_SMALL else types.DIFFICULTY_SECTION_HEIGHT_LARGE;
+    const grid_start_y = title_bottom_y + difficulty_section_height;
+
+    for (0..20) |i| {
+        const row = @divTrunc(@as(i32, @intCast(i)), categories_per_row);
+        const col = @mod(@as(i32, @intCast(i)), categories_per_row);
+
+        // Calculate total width of current row to center it properly
+        const total_categories = 20; // Maximum categories we support
+        const categories_remaining = total_categories - (row * categories_per_row);
+        const categories_in_this_row = @min(categories_per_row, categories_remaining);
+        const row_width = categories_in_this_row * category_button_width + @max(0, (categories_in_this_row - 1)) * category_spacing;
+        const row_start_x = @divTrunc((screen_width - row_width), 2);
+
+        const x = row_start_x + @as(i32, @intCast(col)) * (category_button_width + category_spacing);
+        const y = grid_start_y + @as(i32, @intCast(row)) * (category_button_height + category_spacing);
+
+        category_buttons[i] = rl.Rectangle{
+            .x = @as(f32, @floatFromInt(x)),
+            .y = @as(f32, @floatFromInt(y)),
+            .width = @as(f32, @floatFromInt(category_button_width)),
+            .height = @as(f32, @floatFromInt(category_button_height)),
+        };
+    }
+
+    // Initialize difficulty filter buttons (horizontal row, centered)
+    const difficulty_button_width: i32 = types.DIFFICULTY_BUTTON_WIDTH;
+    const difficulty_button_height: i32 = types.DIFFICULTY_BUTTON_HEIGHT;
+    const difficulty_spacing: i32 = types.DIFFICULTY_BUTTON_SPACING;
+    const difficulty_y = if (screen_width < 900) constants.margin + types.DIFFICULTY_Y_OFFSET_SMALL else constants.margin + types.DIFFICULTY_Y_OFFSET_LARGE;
+
+    // Center the difficulty buttons horizontally
+    const total_difficulty_width = 5 * difficulty_button_width + 4 * difficulty_spacing;
+    const difficulty_start_x = @divTrunc((screen_width - total_difficulty_width), 2);
+
+    for (0..5) |i| {
+        difficulty_buttons[i] = rl.Rectangle{
+            .x = @as(f32, @floatFromInt(difficulty_start_x + @as(i32, @intCast(i)) * (difficulty_button_width + difficulty_spacing))),
+            .y = @as(f32, @floatFromInt(difficulty_y)),
+            .width = @as(f32, @floatFromInt(difficulty_button_width)),
+            .height = @as(f32, @floatFromInt(difficulty_button_height)),
+        };
+    }
 
     return UILayout{
         .screen_width = screen_width,
@@ -237,12 +308,15 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
         .randomize_btn = randomize_btn,
         .submit_btn = submit_btn,
         .answer_btn = answer_btn,
+        .categories_btn = categories_btn,
         .input_box = input_box,
         .back_btn = back_btn,
         .tags_input_box = tags_input_box,
         .submit_true_btn = submit_true_btn,
         .submit_false_btn = submit_false_btn,
         .submit_question_btn = submit_question_btn,
+        .category_buttons = category_buttons,
+        .difficulty_buttons = difficulty_buttons,
     };
 }
 
@@ -296,18 +370,22 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
     const continue_rect = rl.Rectangle{ .x = @as(f32, @floatFromInt(continue_x)), .y = @as(f32, @floatFromInt(continue_button_y)), .width = constants.confirm_w, .height = constants.confirm_h };
 
     // Side panel controls (right side) - stacked vertically
-    const button_gap = 8; // Gap between stacked buttons
+    const button_gap = types.SIDE_BUTTON_GAP;
 
     // COLOR button (top of stack)
     const color_btn_y = @as(f32, @floatFromInt(constants.margin));
     const color_btn = rl.Rectangle{ .x = side_panel_x, .y = color_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // ANSWER button (middle of stack)
+    // ANSWER button (second in stack)
     const answer_btn_y = color_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const answer_btn = rl.Rectangle{ .x = side_panel_x, .y = answer_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
+    // CATEGORIES button (third in stack)
+    const h_categories_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    const h_categories_btn = rl.Rectangle{ .x = side_panel_x, .y = h_categories_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
+
     // SUBMIT button (bottom of stack)
-    const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    const submit_btn_y = h_categories_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = side_panel_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
     // Submit form layout for horizontal mode - use same centering approach
@@ -338,10 +416,10 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
 
     // Answer selection buttons (centered in question area)
     const h_answer_buttons_y = h_tags_input_y + types.INPUT_BOX_HEIGHT + h_form_element_spacing;
-    const h_total_answer_button_width = h_submit_button_w * 2 + 20;
+    const h_total_answer_button_width = h_submit_button_w * 2 + types.SUBMIT_ANSWER_BUTTON_GAP;
     const h_answer_buttons_x = input_box_x + @divTrunc(safe_h_input_width - @as(i32, @intFromFloat(h_total_answer_button_width)), 2);
     const h_submit_true_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_answer_buttons_x)), .y = @as(f32, @floatFromInt(h_answer_buttons_y)), .width = h_submit_button_w, .height = h_submit_button_h };
-    const h_submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_answer_buttons_x)) + h_submit_button_w + 20, .y = @as(f32, @floatFromInt(h_answer_buttons_y)), .width = h_submit_button_w, .height = h_submit_button_h };
+    const h_submit_false_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_answer_buttons_x)) + h_submit_button_w + types.SUBMIT_ANSWER_BUTTON_GAP, .y = @as(f32, @floatFromInt(h_answer_buttons_y)), .width = h_submit_button_w, .height = h_submit_button_h };
 
     // Submit button (centered in question area like confirm button)
     const h_submit_button_y = h_answer_buttons_y + @as(i32, @intFromFloat(h_submit_button_h)) + h_form_element_spacing;
@@ -349,12 +427,75 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
     h_submit_button_x = @max(h_submit_button_x, constants.margin);
     const h_submit_question_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(h_submit_button_x)), .y = @as(f32, @floatFromInt(h_submit_button_y)), .width = constants.confirm_w, .height = constants.confirm_h };
 
-    // Back button (top left corner) - wider to accommodate text
-    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = 90, .height = 40 };
+    // Back button (top left corner)
+    const back_btn = rl.Rectangle{ .x = @as(f32, @floatFromInt(constants.margin)), .y = @as(f32, @floatFromInt(constants.margin)), .width = types.BACK_BUTTON_WIDTH, .height = types.BACK_BUTTON_HEIGHT };
+
+    // Category selection layout - dynamic grid centered beneath title (horizontal mode)
+    var h_category_buttons: [20]rl.Rectangle = undefined;
+    var h_difficulty_buttons: [5]rl.Rectangle = undefined;
+
+    // Initialize category buttons in a dynamic centered grid layout (horizontal mode)
+    // Use responsive sizing based on screen width
+    const h_category_button_width: i32 = if (screen_width < 900) types.CATEGORY_BUTTON_WIDTH_SMALL else types.CATEGORY_BUTTON_WIDTH_LARGE;
+    const h_category_button_height: i32 = if (screen_width < 900) types.CATEGORY_BUTTON_HEIGHT_SMALL else types.CATEGORY_BUTTON_HEIGHT_LARGE;
+    const h_category_spacing: i32 = if (screen_width < 900) types.CATEGORY_SPACING_SMALL else types.CATEGORY_SPACING_LARGE;
+
+    // Calculate optimal number of categories per row for horizontal mode
+    const h_available_width = screen_width - (constants.margin * 2);
+    const h_max_categories_per_row = @max(1, @divTrunc(h_available_width, h_category_button_width + h_category_spacing));
+    // Responsive row limits for horizontal mode (use different breakpoint for horizontal layout)
+    const h_max_per_row: i32 = if (screen_width < 900) types.MAX_CATEGORIES_PER_ROW_SMALL else (types.MAX_CATEGORIES_PER_ROW_LARGE - 1); // 3 instead of 4 for horizontal
+    const h_categories_per_row = @min(h_max_categories_per_row, h_max_per_row);
+
+    // Calculate the grid starting position to center it
+    const h_title_bottom_y = constants.margin + constants.large_font + types.TITLE_SPACING;
+    const h_difficulty_section_height = if (screen_width < 900) types.DIFFICULTY_SECTION_HEIGHT_SMALL else types.DIFFICULTY_SECTION_HEIGHT_LARGE;
+    const h_grid_start_y = h_title_bottom_y + h_difficulty_section_height;
+
+    for (0..20) |i| {
+        const row = @divTrunc(@as(i32, @intCast(i)), h_categories_per_row);
+        const col = @mod(@as(i32, @intCast(i)), h_categories_per_row);
+
+        // Calculate total width of current row to center it properly
+        const h_total_categories = 20; // Maximum categories we support
+        const h_categories_remaining = h_total_categories - (row * h_categories_per_row);
+        const categories_in_this_row = @min(h_categories_per_row, h_categories_remaining);
+        const row_width = categories_in_this_row * h_category_button_width + @max(0, (categories_in_this_row - 1)) * h_category_spacing;
+        const row_start_x = @divTrunc((screen_width - row_width), 2);
+
+        const x = row_start_x + @as(i32, @intCast(col)) * (h_category_button_width + h_category_spacing);
+        const y = h_grid_start_y + @as(i32, @intCast(row)) * (h_category_button_height + h_category_spacing);
+
+        h_category_buttons[i] = rl.Rectangle{
+            .x = @as(f32, @floatFromInt(x)),
+            .y = @as(f32, @floatFromInt(y)),
+            .width = @as(f32, @floatFromInt(h_category_button_width)),
+            .height = @as(f32, @floatFromInt(h_category_button_height)),
+        };
+    }
+
+    // Initialize difficulty filter buttons (centered, same as vertical)
+    const h_difficulty_button_width: i32 = types.DIFFICULTY_BUTTON_WIDTH;
+    const h_difficulty_button_height: i32 = types.DIFFICULTY_BUTTON_HEIGHT;
+    const h_difficulty_spacing: i32 = types.DIFFICULTY_BUTTON_SPACING;
+    const h_difficulty_y = if (screen_width < 900) constants.margin + types.DIFFICULTY_Y_OFFSET_SMALL else constants.margin + types.DIFFICULTY_Y_OFFSET_LARGE;
+
+    // Center the difficulty buttons horizontally
+    const h_total_difficulty_width = 5 * h_difficulty_button_width + 4 * h_difficulty_spacing;
+    const h_difficulty_start_x = @divTrunc((screen_width - h_total_difficulty_width), 2);
+
+    for (0..5) |i| {
+        h_difficulty_buttons[i] = rl.Rectangle{
+            .x = @as(f32, @floatFromInt(h_difficulty_start_x + @as(i32, @intCast(i)) * (h_difficulty_button_width + h_difficulty_spacing))),
+            .y = @as(f32, @floatFromInt(h_difficulty_y)),
+            .width = @as(f32, @floatFromInt(h_difficulty_button_width)),
+            .height = @as(f32, @floatFromInt(h_difficulty_button_height)),
+        };
+    }
 
     // Calculate dummy values for compatibility
-    const ui_block_height = confirm_button_y + @as(i32, @intFromFloat(constants.confirm_h)) - question_y;
-    const ui_start_y = question_y;
+    const ui_block_height = confirm_button_y + @as(i32, @intFromFloat(constants.confirm_h)) - question_text_y;
+    const ui_start_y = question_text_y;
 
     return UILayout{
         .screen_width = screen_width,
@@ -373,12 +514,15 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
         .randomize_btn = color_btn,
         .submit_btn = submit_btn,
         .answer_btn = answer_btn,
+        .categories_btn = h_categories_btn,
         .input_box = input_box,
         .back_btn = back_btn,
         .tags_input_box = h_tags_input_box,
         .submit_true_btn = h_submit_true_btn,
         .submit_false_btn = h_submit_false_btn,
         .submit_question_btn = h_submit_question_btn,
+        .category_buttons = h_category_buttons,
+        .difficulty_buttons = h_difficulty_buttons,
     };
 }
 
@@ -477,13 +621,13 @@ pub fn shouldShowSubmitButton(state: *types.GameState) bool {
     // Allow submission if:
     // 1. User has completed at least one session
     // 2. User has a reasonable trust score (>= 0.6) OR has completed multiple sessions
-    // 3. Not currently in the submitting screen (to avoid button overlap)
+    // 3. Not currently in the submitting or submit thanks screens (to avoid button overlap)
     const has_experience = state.sessions_completed >= 1;
     const has_good_trust = state.user_trust >= 0.6;
     const has_multiple_sessions = state.sessions_completed >= 2;
-    const not_submitting = state.game_state != .Submitting;
+    const not_in_submit_flow = state.game_state != .Submitting and state.game_state != .SubmitThanks;
 
-    return has_experience and (has_good_trust or has_multiple_sessions) and not_submitting;
+    return has_experience and (has_good_trust or has_multiple_sessions) and not_in_submit_flow;
 }
 
 // --- Modular Drawing Functions ---
@@ -775,6 +919,92 @@ pub fn drawSubmitThanksScreen(state: *types.GameState, layout: UILayout) void {
     rl.drawText(back_text, back_text_x, back_text_y, submit_font_size, state.bg_color);
 }
 
+pub fn drawCategorySelectionScreen(state: *types.GameState, layout: UILayout) void {
+    const constants = getResponsiveConstants();
+
+    // Title
+    const title_text = "Select a Category";
+    const title_font_size = constants.large_font;
+    const title_width = rl.measureText(title_text, title_font_size);
+    const title_x = @divTrunc((layout.screen_width - title_width), 2);
+    const title_y = constants.margin;
+    rl.drawText(title_text, title_x, title_y, title_font_size, state.fg_color);
+
+    // Difficulty filter text - positioned responsive to screen size
+    const filter_text = "Difficulty";
+    const filter_text_width = rl.measureText(filter_text, constants.small_font);
+    const filter_text_x = @divTrunc((layout.screen_width - filter_text_width), 2);
+
+    // Position text differently based on screen size to avoid button overlap
+    const filter_text_y = if (layout.screen_width < 900)
+        title_y + title_font_size + 10 // Small screens: close to title
+    else
+        constants.margin + types.DIFFICULTY_Y_OFFSET_LARGE - constants.small_font - 5; // Large screens: just above difficulty buttons
+
+    rl.drawText(filter_text, filter_text_x, filter_text_y, constants.small_font, state.fg_color);
+
+    // Draw difficulty filter buttons
+    for (0..5) |i| {
+        const difficulty = i + 1;
+        const is_selected = state.selected_difficulty == @as(u8, @intCast(difficulty));
+
+        const button_color = if (is_selected) types.accent else state.fg_color;
+        const text_color = if (is_selected) rl.Color.white else state.fg_color;
+
+        if (is_selected) {
+            rl.drawRectangleRec(layout.difficulty_buttons[i], button_color);
+        } else {
+            rl.drawRectangleLinesEx(layout.difficulty_buttons[i], 2, button_color);
+        }
+
+        var difficulty_buf: [8]u8 = undefined;
+        const difficulty_text = std.fmt.bufPrintZ(&difficulty_buf, "{d}", .{difficulty}) catch "?";
+        const text_width = rl.measureText(difficulty_text, constants.small_font);
+        const text_x = @as(i32, @intFromFloat(layout.difficulty_buttons[i].x)) + @divTrunc(@as(i32, @intFromFloat(layout.difficulty_buttons[i].width)) - text_width, 2);
+        const text_y = @as(i32, @intFromFloat(layout.difficulty_buttons[i].y)) + @divTrunc(@as(i32, @intFromFloat(layout.difficulty_buttons[i].height)) - constants.small_font, 2);
+        rl.drawText(difficulty_text, text_x, text_y, constants.small_font, text_color);
+    }
+
+    // Draw category buttons (only for actual categories)
+    for (0..state.categories_count) |i| {
+        const category = state.available_categories[i];
+
+        // Draw button background with more modern styling
+        rl.drawRectangleRec(layout.category_buttons[i], rl.Color{ .r = state.bg_color.r, .g = state.bg_color.g, .b = state.bg_color.b, .a = 40 });
+        rl.drawRectangleLinesEx(layout.category_buttons[i], 2, state.fg_color);
+
+        // Category name and count on separate lines for better readability
+        var name_buf: [32]u8 = undefined;
+        var count_buf: [16]u8 = undefined;
+        const category_name = category.name[0..@min(category.name.len, 20)]; // Limit name length to prevent overflow
+        const name_text = std.fmt.bufPrintZ(&name_buf, "{s}", .{category_name}) catch "Category";
+        const count_text = std.fmt.bufPrintZ(&count_buf, "({d})", .{category.count}) catch "(?)";
+
+        // Calculate positioning for two-line layout
+        const name_width = rl.measureText(name_text, constants.medium_font);
+        const count_width = rl.measureText(count_text, constants.small_font);
+
+        const name_x = @as(i32, @intFromFloat(layout.category_buttons[i].x)) + @divTrunc(@as(i32, @intFromFloat(layout.category_buttons[i].width)) - name_width, 2);
+        const count_x = @as(i32, @intFromFloat(layout.category_buttons[i].x)) + @divTrunc(@as(i32, @intFromFloat(layout.category_buttons[i].width)) - count_width, 2);
+
+        const total_text_height = constants.medium_font + 5 + constants.small_font; // Name + gap + count
+        const text_start_y = @as(i32, @intFromFloat(layout.category_buttons[i].y)) + @divTrunc(@as(i32, @intFromFloat(layout.category_buttons[i].height)) - total_text_height, 2);
+        const name_y = text_start_y;
+        const count_y = text_start_y + constants.medium_font + 5;
+
+        rl.drawText(name_text, name_x, name_y, constants.medium_font, state.fg_color);
+        rl.drawText(count_text, count_x, count_y, constants.small_font, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 180 });
+    }
+
+    // Back button (top left corner)
+    rl.drawRectangleLinesEx(layout.back_btn, 2, state.fg_color);
+    const back_full_text = "< Back";
+    const back_text_width = rl.measureText(back_full_text, constants.small_font);
+    const back_text_x = @as(i32, @intFromFloat(layout.back_btn.x)) + @divTrunc(@as(i32, @intFromFloat(layout.back_btn.width)) - back_text_width, 2);
+    const back_text_y = @as(i32, @intFromFloat(layout.back_btn.y)) + @divTrunc(@as(i32, @intFromFloat(layout.back_btn.height)) - constants.small_font, 2);
+    rl.drawText(back_full_text, back_text_x, back_text_y, constants.small_font, state.fg_color);
+}
+
 pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
     const constants = getResponsiveConstants();
 
@@ -938,11 +1168,21 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
     // SUBMIT button (bottom of stack, only for qualified users) - keep visible always when qualified
     if (shouldShowSubmitButton(state)) {
         rl.drawRectangleRec(layout.submit_btn, state.fg_color);
-        const submit_text = "SUBMIT";
-        const submit_text_width = rl.measureText(submit_text, constants.small_font);
-        const submit_text_x = @as(i32, @intFromFloat(layout.submit_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - submit_text_width), 2);
-        const submit_text_y = @as(i32, @intFromFloat(layout.submit_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
-        rl.drawText(submit_text, submit_text_x, submit_text_y, constants.small_font, state.bg_color);
+        const submit_btn_text = "SUBMIT";
+        const submit_btn_text_width = rl.measureText(submit_btn_text, constants.small_font);
+        const submit_btn_text_x = @as(i32, @intFromFloat(layout.submit_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - submit_btn_text_width), 2);
+        const submit_btn_text_y = @as(i32, @intFromFloat(layout.submit_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
+        rl.drawText(submit_btn_text, submit_btn_text_x, submit_btn_text_y, constants.small_font, state.bg_color);
+    }
+
+    // CATEGORIES button (new button in the stack) - hide in submit mode
+    if (!hide_side_buttons) {
+        rl.drawRectangleRec(layout.categories_btn, state.fg_color);
+        const categories_text = "CATEGORIES";
+        const categories_text_width = rl.measureText(categories_text, constants.small_font);
+        const categories_text_x = @as(i32, @intFromFloat(layout.categories_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - categories_text_width), 2);
+        const categories_text_y = @as(i32, @intFromFloat(layout.categories_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
+        rl.drawText(categories_text, categories_text_x, categories_text_y, constants.small_font, state.bg_color);
     }
 
     // NEW GAME button (middle of stack) - hide in submit mode
@@ -981,6 +1221,9 @@ pub fn draw(state: *types.GameState) void {
         .Loading, .Authenticating => {
             drawLoadingScreen(state, layout);
         },
+        .CategorySelection => {
+            drawCategorySelectionScreen(state, layout);
+        },
         .Answering => {
             drawAnsweringScreen(state, layout);
         },
@@ -995,6 +1238,8 @@ pub fn draw(state: *types.GameState) void {
         },
     }
 
-    // Always-visible UI elements
-    drawAlwaysVisibleUI(state, layout);
+    // Always-visible UI elements (only show for non-category-selection states)
+    if (state.game_state != .CategorySelection) {
+        drawAlwaysVisibleUI(state, layout);
+    }
 }

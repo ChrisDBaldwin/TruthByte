@@ -39,9 +39,12 @@ Resources:
           QUESTIONS_TABLE_NAME: 
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-QuestionsTableName
-          QUESTION_TAGS_TABLE_NAME: 
+          QUESTION_CATEGORIES_TABLE_NAME: 
             Fn::ImportValue: 
-              Fn::Sub: ${Environment}-QuestionTagsTableName
+              Fn::Sub: ${Environment}-QuestionCategoriesTableName
+          CATEGORIES_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-CategoriesTableName
           USERS_TABLE_NAME: 
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-UsersTableName
@@ -156,6 +159,59 @@ Resources:
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-UsersTableName
 
+  GetCategoriesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-get-categories
+      Handler: get_categories.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: get-categories.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+          QUESTION_CATEGORIES_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionCategoriesTableName
+          CATEGORIES_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-CategoriesTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
+
+  GetUserSubmissionsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-get-user-submissions
+      Handler: get_user_submissions.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: get-user-submissions.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+          SUBMITTED_QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-SubmittedQuestionsTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -184,7 +240,9 @@ Resources:
                   - Fn::ImportValue: 
                       Fn::Sub: ${Environment}-QuestionsTableArn
                   - Fn::ImportValue: 
-                      Fn::Sub: ${Environment}-QuestionTagsTableArn
+                      Fn::Sub: ${Environment}-QuestionCategoriesTableArn
+                  - Fn::ImportValue: 
+                      Fn::Sub: ${Environment}-CategoriesTableArn
                   - Fn::ImportValue: 
                       Fn::Sub: ${Environment}-SubmittedQuestionsTableArn
                   - Fn::ImportValue: 
@@ -235,4 +293,16 @@ Outputs:
     Description: ARN of the get user Lambda function
     Value: !GetAtt GetUserFunction.Arn
     Export:
-      Name: !Sub ${Environment}-GetUserFunctionArn 
+      Name: !Sub ${Environment}-GetUserFunctionArn
+
+  GetCategoriesFunctionArn:
+    Description: ARN of the get categories Lambda function
+    Value: !GetAtt GetCategoriesFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-GetCategoriesFunctionArn
+
+  GetUserSubmissionsFunctionArn:
+    Description: ARN of the get user submissions Lambda function
+    Value: !GetAtt GetUserSubmissionsFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-GetUserSubmissionsFunctionArn 

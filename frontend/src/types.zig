@@ -31,6 +31,28 @@ pub const INPUT_BOX_WIDTH = 400;
 pub const INPUT_BOX_HEIGHT = 40;
 pub const BUTTON_GAP = 40;
 
+// --- Category Selection UI ---
+pub const CATEGORY_BUTTON_WIDTH_SMALL: i32 = 160;
+pub const CATEGORY_BUTTON_WIDTH_LARGE: i32 = 200;
+pub const CATEGORY_BUTTON_HEIGHT_SMALL: i32 = 55;
+pub const CATEGORY_BUTTON_HEIGHT_LARGE: i32 = 80;
+pub const CATEGORY_SPACING_SMALL: i32 = 8;
+pub const CATEGORY_SPACING_LARGE: i32 = 12;
+pub const DIFFICULTY_BUTTON_WIDTH: i32 = 60;
+pub const DIFFICULTY_BUTTON_HEIGHT: i32 = 30;
+pub const DIFFICULTY_BUTTON_SPACING: i32 = 10;
+pub const DIFFICULTY_SECTION_HEIGHT_SMALL: i32 = 80;
+pub const DIFFICULTY_SECTION_HEIGHT_LARGE: i32 = 110;
+pub const DIFFICULTY_Y_OFFSET_SMALL: i32 = 50;
+pub const DIFFICULTY_Y_OFFSET_LARGE: i32 = 80;
+pub const BACK_BUTTON_WIDTH: i32 = 90;
+pub const BACK_BUTTON_HEIGHT: i32 = 40;
+pub const TITLE_SPACING: i32 = 20;
+pub const MAX_CATEGORIES_PER_ROW_SMALL: i32 = 2;
+pub const MAX_CATEGORIES_PER_ROW_LARGE: i32 = 4;
+pub const SUBMIT_ANSWER_BUTTON_GAP: i32 = 20;
+pub const SIDE_BUTTON_GAP: i32 = 8;
+
 // --- Game Constants ---
 pub const accent = rl.Color{ .r = 255, .g = 99, .b = 71, .a = 255 }; // tomato (stark)
 pub const button_w = 240;
@@ -65,17 +87,36 @@ pub const UserSessionResponse = struct {
     timestamp: i64,
 };
 
-pub const GameStateEnum = enum { Authenticating, Loading, Answering, Submitting, SubmitThanks, Finished };
+pub const GameStateEnum = enum {
+    Authenticating,
+    Loading,
+    CategorySelection, // New state for category browsing
+    Answering,
+    Submitting,
+    SubmitThanks,
+    Finished,
+};
 
 pub const Orientation = enum { Vertical, Horizontal };
 
+// Category information for selection UI
+pub const Category = struct {
+    name: []const u8,
+    count: u32,
+    selected: bool = false,
+};
+
 pub const Question = struct {
     id: [:0]const u8, // Unique identifier
-    tags: []const []const u8 = &.{}, // Tags/categories
+    categories: []const []const u8 = &.{}, // Categories (formerly tags)
+    difficulty: u8 = 3, // Difficulty rating 1-5 (default: 3 - medium)
     question: [:0]const u8, // The main question text
     title: [:0]const u8 = "", // Short label/headline (optional)
     passage: [:0]const u8 = "", // Supporting passage (optional)
     answer: bool, // True/False answer
+
+    // Backwards compatibility
+    tags: []const []const u8 = &.{}, // Deprecated: use categories instead
 };
 
 pub const Session = struct {
@@ -83,6 +124,8 @@ pub const Session = struct {
     current: usize = 0,
     correct: usize = 0,
     finished: bool = false,
+    selected_category: []const u8 = "general", // Track selected category
+    selected_difficulty: ?u8 = null, // Track selected difficulty filter
 };
 
 pub const GameState = struct {
@@ -103,6 +146,15 @@ pub const GameState = struct {
     sessions_completed: u32 = 0,
     invited_shown: bool = false,
     loading_start_time: i64 = 0,
+    // Category selection state
+    available_categories: [20]Category = undefined, // Max 20 categories
+    categories_count: usize = 0,
+    categories_loading: bool = false,
+    // Persistent storage for category names (20 categories x 64 chars each)
+    category_name_storage: [20][64]u8 = std.mem.zeroes([20][64]u8),
+    selected_category_name: [64]u8 = std.mem.zeroes([64]u8), // Selected category name buffer
+    selected_category_len: usize = 0,
+    selected_difficulty: ?u8 = null, // 1-5 difficulty filter
     // UI state
     input_active: bool = false,
     input_buffer: [256]u8 = std.mem.zeroes([256]u8),
@@ -128,16 +180,16 @@ pub const GameState = struct {
 
 // --- Question Pool ---
 pub const question_pool = [_]Question{
-    Question{ .id = "q001", .tags = &.{ "food", "meme" }, .question = "Pizza is a vegetable?", .title = "Pizza Fact", .passage = "Some US lawmakers once argued that pizza counts as a vegetable in school lunches.", .answer = false },
-    Question{ .id = "q002", .tags = &.{ "science", "nature" }, .question = "The sky is blue?", .title = "Sky Color", .passage = "", .answer = true },
-    Question{ .id = "q003", .tags = &.{"math"}, .question = "2+2=5?", .title = "Math Check", .passage = "", .answer = false },
-    Question{ .id = "q004", .tags = &.{ "science", "physics" }, .question = "Water boils at 100C?", .title = "Boiling Point", .passage = "", .answer = true },
-    Question{ .id = "q005", .tags = &.{ "animals", "meme" }, .question = "Cats can fly?", .title = "Cat Fact", .passage = "", .answer = false },
-    Question{ .id = "q006", .tags = &.{ "science", "geography" }, .question = "Earth is round?", .title = "Earth Shape", .passage = "", .answer = true },
-    Question{ .id = "q007", .tags = &.{"science"}, .question = "Fire is cold?", .title = "Fire Fact", .passage = "", .answer = false },
-    Question{ .id = "q008", .tags = &.{"animals"}, .question = "Fish can swim?", .title = "Fish Fact", .passage = "", .answer = true },
-    Question{ .id = "q009", .tags = &.{ "animals", "biology" }, .question = "Birds are mammals?", .title = "Bird Fact", .passage = "", .answer = false },
-    Question{ .id = "q010", .tags = &.{ "science", "geography" }, .question = "Sun rises in the east?", .title = "Sunrise", .passage = "", .answer = true },
+    Question{ .id = "q001", .categories = &.{ "food", "meme" }, .difficulty = 2, .question = "Pizza is a vegetable?", .title = "Pizza Fact", .passage = "Some US lawmakers once argued that pizza counts as a vegetable in school lunches.", .answer = false, .tags = &.{ "food", "meme" } },
+    Question{ .id = "q002", .categories = &.{ "science", "nature" }, .difficulty = 1, .question = "The sky is blue?", .title = "Sky Color", .passage = "", .answer = true, .tags = &.{ "science", "nature" } },
+    Question{ .id = "q003", .categories = &.{"math"}, .difficulty = 1, .question = "2+2=5?", .title = "Math Check", .passage = "", .answer = false, .tags = &.{"math"} },
+    Question{ .id = "q004", .categories = &.{ "science", "physics" }, .difficulty = 2, .question = "Water boils at 100C?", .title = "Boiling Point", .passage = "", .answer = true, .tags = &.{ "science", "physics" } },
+    Question{ .id = "q005", .categories = &.{ "animals", "meme" }, .difficulty = 1, .question = "Cats can fly?", .title = "Cat Fact", .passage = "", .answer = false, .tags = &.{ "animals", "meme" } },
+    Question{ .id = "q006", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Earth is round?", .title = "Earth Shape", .passage = "", .answer = true, .tags = &.{ "science", "geography" } },
+    Question{ .id = "q007", .categories = &.{"science"}, .difficulty = 1, .question = "Fire is cold?", .title = "Fire Fact", .passage = "", .answer = false, .tags = &.{"science"} },
+    Question{ .id = "q008", .categories = &.{"animals"}, .difficulty = 1, .question = "Fish can swim?", .title = "Fish Fact", .passage = "", .answer = true, .tags = &.{"animals"} },
+    Question{ .id = "q009", .categories = &.{ "animals", "biology" }, .difficulty = 3, .question = "Birds are mammals?", .title = "Bird Fact", .passage = "", .answer = false, .tags = &.{ "animals", "biology" } },
+    Question{ .id = "q010", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Sun rises in the east?", .title = "Sunrise", .passage = "", .answer = true, .tags = &.{ "science", "geography" } },
 };
 
 // --- JSON Types for API Response ---
@@ -147,6 +199,9 @@ pub const QuestionJSON = struct {
     title: []const u8 = "",
     passage: []const u8 = "",
     answer: bool,
+    categories: [][]const u8 = &.{},
+    difficulty: u8 = 3,
+    // Backwards compatibility
     tags: [][]const u8 = &.{},
 
     pub fn toQuestion(self: QuestionJSON, allocator: std.mem.Allocator) !Question {
@@ -162,14 +217,29 @@ pub const QuestionJSON = struct {
             .title = title_copy,
             .passage = passage_copy,
             .answer = self.answer,
-            .tags = &.{}, // TODO: Convert tags if needed
+            .categories = &.{}, // TODO: Convert categories if needed
+            .difficulty = self.difficulty,
+            .tags = &.{}, // TODO: Convert tags if needed for backwards compatibility
         };
     }
+};
+
+pub const CategoryJSON = struct {
+    name: []const u8,
+    count: u32,
 };
 
 pub const APIResponseJSON = struct {
     questions: []QuestionJSON,
     count: u32,
-    tag: []const u8 = "general",
+    category: []const u8 = "general",
+    difficulty: ?u8 = null,
     requested_count: u32,
+    // Backwards compatibility
+    tag: []const u8 = "general",
+};
+
+pub const CategoriesResponseJSON = struct {
+    categories: []CategoryJSON,
+    total_categories: u32,
 };

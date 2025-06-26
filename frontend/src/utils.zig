@@ -24,6 +24,8 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
 
     // API functions
     pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn fetch_questions_enhanced(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn fetch_categories(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn propose_question(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn fetch_user(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
@@ -151,6 +153,24 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         _ = user_id_len;
         _ = callback_ptr;
         std.debug.print("fetch_questions is not available in native build\n", .{});
+    }
+
+    pub fn fetch_questions_enhanced(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = num_questions;
+        _ = category_ptr;
+        _ = category_len;
+        _ = difficulty;
+        _ = user_id_ptr;
+        _ = user_id_len;
+        _ = callback_ptr;
+        std.debug.print("fetch_questions_enhanced is not available in native build\n", .{});
+    }
+
+    pub fn fetch_categories(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+        _ = user_id_ptr;
+        _ = user_id_len;
+        _ = callback_ptr;
+        std.debug.print("fetch_categories is not available in native build\n", .{});
     }
 
     pub fn submit_answers(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {

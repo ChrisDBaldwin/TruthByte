@@ -100,8 +100,8 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 ### Data Flow
 
 ```
-User → Frontend (WASM) → GET /questions?tag=science
-       ↓ (UUID generated)   ↑ (tag-based, no scans)
+User → Frontend (WASM) → GET /questions?category=science&difficulty=3
+       ↓ (UUID generated)   ↑ (category-based, no scans)
        ↓ localStorage       ↓ Authorization: Bearer <token>
        ↓ persistence        ↓ X-User-ID: <uuid>
        ↓                    ↓
@@ -113,17 +113,18 @@ User → Frontend (WASM) → GET /questions?tag=science
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Questions     │    │  Question-Tags   │    │   API Gateway   │
+│   Questions     │    │Question-Categories│   │   API Gateway   │
 │     Table       │    │     Table        │    │   + Lambda      │
 ├─────────────────┤    ├──────────────────┤    ├─────────────────┤
-│ id: "q001"      │    │ tag: "science"   │◄───┤ GET /questions  │
-│ question: "..." │    │ question_id:     │    │ ?tag=science    │
-│ answer: true    │    │   "q001"         │    │                 │
-│ tags: [...]     │    │                  │    │ Fast tag query  │
-│ title: "..."    │    │ tag: "general"   │    │ → Batch get IDs │
-│ passage: "..."  │    │ question_id:     │    │ → Random select │
-└─────────────────┘    │   "q001"         │    └─────────────────┘
-                       └──────────────────┘
+│ id: "q001"      │    │category:"science"│◄───┤ GET /questions  │
+│ question: "..." │    │ question_id:     │    │?category=science│
+│ answer: true    │    │   "q001"         │    │&difficulty=3    │
+│ categories:[...] │    │ difficulty: 3    │    │                 │
+│ difficulty: 3   │    │                  │    │Fast category    │
+│ title: "..."    │    │category:"general"│    │query → Batch   │
+│ passage: "..."  │    │ question_id:     │    │get IDs → Random │
+└─────────────────┘    │   "q001"         │    │select           │
+                       └──────────────────┘    └─────────────────┘
 ```
 
 ## Mobile & Touch Support
@@ -284,7 +285,8 @@ See [deploy/README.md](deploy/README.md) for detailed deployment instructions.
 ```json
 {
   "id": "q003",
-  "tags": ["health"],
+  "categories": ["health"],
+  "difficulty": 4,
   "question": "is pain experienced in a missing body part or paralyzed area",
   "title": "Phantom pain",
   "passage": "Phantom pain sensations are described as perceptions that an individual experiences relating to a limb or an organ that is not physically part of the body. Limb loss is a result of either removal by amputation or congenital limb deficiency. However, phantom limb sensations can also occur following nerve avulsion or spinal cord injury.",

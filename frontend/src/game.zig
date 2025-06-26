@@ -248,6 +248,58 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             if (!hide_side_buttons) {
                 api.startSession(state);
             }
+        } else if (rl.checkCollisionPointRec(pos, layout.categories_btn)) {
+            // CATEGORIES button - start category selection
+            const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
+            if (!hide_side_buttons) {
+                api.startCategorySelection(state);
+            }
+        } else if (state.game_state == .CategorySelection) {
+            // Handle category selection interactions
+            if (rl.checkCollisionPointRec(pos, layout.back_btn)) {
+                // Back button - return to game
+                if (state.session.finished) {
+                    state.game_state = .Finished;
+                } else {
+                    state.game_state = .Answering;
+                }
+            } else {
+                // Check if any category was clicked
+                for (0..state.categories_count) |i| {
+                    if (rl.checkCollisionPointRec(pos, layout.category_buttons[i])) {
+                        // Category selected - start session with this category
+                        const selected_category = state.available_categories[i];
+
+                        // Copy category name to state buffer
+                        const name_len = @min(selected_category.name.len, state.selected_category_name.len - 1);
+                        @memcpy(state.selected_category_name[0..name_len], selected_category.name[0..name_len]);
+                        state.selected_category_name[name_len] = 0;
+                        state.selected_category_len = name_len;
+
+                        // Start session with selected category
+                        const category_slice = state.selected_category_name[0..state.selected_category_len];
+                        api.startSessionWithCategory(state, category_slice, state.selected_difficulty);
+                        break;
+                    }
+                }
+
+                // Check difficulty filter buttons
+                for (1..6) |difficulty| {
+                    if (rl.checkCollisionPointRec(pos, layout.difficulty_buttons[difficulty - 1])) {
+                        // Toggle difficulty filter
+                        if (state.selected_difficulty) |selected_difficulty| {
+                            if (selected_difficulty == difficulty) {
+                                state.selected_difficulty = null; // Deselect
+                            } else {
+                                state.selected_difficulty = @as(?u8, @intCast(difficulty));
+                            }
+                        } else {
+                            state.selected_difficulty = @as(?u8, @intCast(difficulty));
+                        }
+                        break;
+                    }
+                }
+            }
         } else if (state.game_state == .Submitting and rl.checkCollisionPointRec(pos, layout.input_box)) {
             // Save current input value if we're switching from tags to question
             if (state.tags_input_active and utils.js.isTextInputFocused()) {

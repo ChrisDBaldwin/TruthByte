@@ -48,6 +48,53 @@ pub fn startSession(state: *types.GameState) void {
     }
 }
 
+pub fn startCategorySelection(state: *types.GameState) void {
+    state.game_state = .Loading;
+    state.loading_message = "Loading categories...";
+    state.loading_start_time = std.time.timestamp();
+    state.categories_loading = true;
+
+    // Set global state for callback
+    g_state = state;
+
+    const builtin = @import("builtin");
+
+    // Call fetch_categories API
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        const user_id_slice = user.getUserIDSlice();
+        utils.js.fetch_categories(user_id_slice.ptr, user_id_slice.len, on_categories_received);
+    } else {
+        // For native builds, show fallback categories
+        initCategoriesWithFallback(state);
+    }
+}
+
+pub fn startSessionWithCategory(state: *types.GameState, category: []const u8, difficulty: ?u8) void {
+    state.game_state = .Loading;
+    state.loading_message = "Loading questions...";
+    state.loading_start_time = std.time.timestamp();
+
+    // Store selected filters in session
+    state.session.selected_category = category;
+    state.session.selected_difficulty = difficulty;
+
+    // Set global state for callback
+    g_state = state;
+
+    const builtin = @import("builtin");
+
+    // Call enhanced fetch_questions API with category and difficulty
+    if (builtin.target.os.tag == .emscripten or builtin.target.os.tag == .freestanding) {
+        const user_id_slice = user.getUserIDSlice();
+        const category_ptr = if (category.len > 0) category.ptr else null;
+        const diff_param = difficulty orelse 0;
+        utils.js.fetch_questions_enhanced(7, category_ptr, category.len, diff_param, user_id_slice.ptr, user_id_slice.len, on_questions_received);
+    } else {
+        // For native builds, use fallback immediately
+        initSessionWithFallback(state);
+    }
+}
+
 pub fn submitResponseBatch(user_session_response: *types.UserSessionResponse) void {
     user_session_response.session_id = utils.js.get_session_id_slice();
     user_session_response.token = utils.js.get_token_slice();
@@ -123,6 +170,40 @@ export fn on_submit_complete(success: i32, data_ptr: [*]const u8, data_len: usiz
     }
 }
 
+// Callback function for fetch_categories API response
+export fn on_categories_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
+    if (g_state == null) {
+        std.debug.print("❌ g_state is null in on_categories_received!\n", .{});
+        return;
+    }
+    const state = g_state.?;
+
+    if (success == 0) {
+        // Error occurred
+        const error_msg = data_ptr[0..data_len];
+        std.debug.print("Failed to fetch categories: {s}\n", .{error_msg});
+        state.loading_message = "Failed to load categories. Using fallback.";
+        // Use fallback categories
+        initCategoriesWithFallback(state);
+        return;
+    }
+
+    // Parse JSON response
+    const actual_len = if (data_len > 0 and data_ptr[data_len - 1] == 0) data_len - 1 else data_len;
+    const json_str = data_ptr[0..actual_len];
+
+    // Parse JSON and populate categories
+    if (parseCategoriesFromJson(state, json_str)) {
+        state.loading_message = "Categories loaded!";
+        state.categories_loading = false;
+        state.game_state = .CategorySelection;
+    } else {
+        // JSON parsing failed, use fallback
+        state.loading_message = "Failed to parse categories. Using fallback.";
+        initCategoriesWithFallback(state);
+    }
+}
+
 // Callback function for fetch_questions API response
 export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
     if (g_state == null) {
@@ -170,8 +251,10 @@ fn parseQuestionsFromJson(state: *types.GameState, json_str: []const u8) ?[7]typ
     var fba = std.heap.FixedBufferAllocator.init(&global_json_buffer);
     const allocator = fba.allocator();
 
-    // Parse JSON into struct
-    const parsed = std.json.parseFromSlice(types.APIResponseJSON, allocator, json_str, .{}) catch |err| {
+    // Parse JSON into struct with ignore_unknown_fields to handle extra fields from database
+    const parsed = std.json.parseFromSlice(types.APIResponseJSON, allocator, json_str, .{
+        .ignore_unknown_fields = true,
+    }) catch |err| {
         std.debug.print("Failed to parse JSON: {any}\n", .{err});
         std.debug.print("JSON length: {}\n", .{json_str.len});
         std.debug.print("JSON preview: {s}\n", .{json_str[0..@min(json_str.len, 300)]});
@@ -251,4 +334,74 @@ pub fn initSessionWithFallback(state: *types.GameState) void {
         };
     }
     state.game_state = .Answering;
+}
+
+// Helper function to parse categories from JSON
+fn parseCategoriesFromJson(state: *types.GameState, json_str: []const u8) bool {
+    // Use global buffer to avoid stack overflow in WASM
+    var fba = std.heap.FixedBufferAllocator.init(&global_json_buffer);
+    const allocator = fba.allocator();
+
+    // Parse JSON into struct with ignore_unknown_fields to handle extra fields from database
+    const parsed = std.json.parseFromSlice(types.CategoriesResponseJSON, allocator, json_str, .{
+        .ignore_unknown_fields = true,
+    }) catch |err| {
+        std.debug.print("Failed to parse categories JSON: {any}\n", .{err});
+        return false;
+    };
+    defer parsed.deinit();
+
+    const response = parsed.value;
+    var count: usize = 0;
+
+    // Convert JSON categories to internal Category structs
+    for (response.categories) |category_json| {
+        if (count >= state.available_categories.len) break;
+
+        // Copy category name to persistent storage in GameState
+        const name_len = @min(category_json.name.len, 63); // Leave room for null terminator
+        @memcpy(state.category_name_storage[count][0..name_len], category_json.name[0..name_len]);
+        state.category_name_storage[count][name_len] = 0;
+
+        state.available_categories[count] = types.Category{
+            .name = state.category_name_storage[count][0..name_len], // Now points to persistent storage
+            .count = category_json.count,
+            .selected = false,
+        };
+        count += 1;
+    }
+
+    state.categories_count = count;
+    return count > 0;
+}
+
+// Initialize categories with fallback data
+fn initCategoriesWithFallback(state: *types.GameState) void {
+    // Provide some fallback categories
+    const fallback_names = [_][]const u8{
+        "general",
+        "science",
+        "math",
+        "animals",
+        "food",
+    };
+    const fallback_counts = [_]u32{ 100, 50, 30, 25, 20 };
+
+    const count = @min(fallback_names.len, state.available_categories.len);
+    for (0..count) |i| {
+        // Copy fallback names to persistent storage
+        const name_len = @min(fallback_names[i].len, 63);
+        @memcpy(state.category_name_storage[i][0..name_len], fallback_names[i][0..name_len]);
+        state.category_name_storage[i][name_len] = 0;
+
+        state.available_categories[i] = types.Category{
+            .name = state.category_name_storage[i][0..name_len],
+            .count = fallback_counts[i],
+            .selected = false,
+        };
+    }
+
+    state.categories_count = count;
+    state.categories_loading = false;
+    state.game_state = .CategorySelection;
 }

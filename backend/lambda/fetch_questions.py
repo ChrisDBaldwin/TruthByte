@@ -5,6 +5,7 @@ import os
 import sys
 from typing import Dict, Any
 from decimal import Decimal
+from boto3.dynamodb.conditions import Attr
 
 # Add the shared directory to Python path for Lambda imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
@@ -16,9 +17,18 @@ from user_utils import get_or_create_user
 # boto3.resource provides a higher-level interface than boto3.client
 dynamodb = boto3.resource('dynamodb')
 questions_table_name = os.environ.get('QUESTIONS_TABLE_NAME', 'truthbyte-questions')
-tags_table_name = os.environ.get('QUESTION_TAGS_TABLE_NAME', 'truthbyte-question-tags')
+categories_table_name = os.environ.get('QUESTION_CATEGORIES_TABLE_NAME', 'truthbyte-question-categories')
 questions_table = dynamodb.Table(questions_table_name)
-tags_table = dynamodb.Table(tags_table_name)
+
+# Handle the case where the categories table might not exist yet (backwards compatibility)
+try:
+    categories_table = dynamodb.Table(categories_table_name)
+    # Test if table exists by checking its status
+    categories_table.table_status
+    USE_CATEGORIES_TABLE = True
+except Exception:
+    USE_CATEGORIES_TABLE = False
+    categories_table = None
 
 class DecimalEncoder(json.JSONEncoder):
     """
@@ -112,44 +122,43 @@ def lambda_handler(event, context):
         except (ValueError, TypeError):
             num_questions = 7
             
-        # Get tag from query params, default to 'general' for efficient querying
-        tag = query_params.get('tag', 'general')
+        # Get category from query params, default to 'general' for efficient querying
+        category = query_params.get('category', 'general')
         
-        # We always query by tag now to avoid expensive table scans
-        # Every question should have a 'general' tag as a fallback
+        # Get difficulty filter from query params (optional)
+        difficulty = query_params.get('difficulty')
+        if difficulty:
+            try:
+                difficulty = int(difficulty)
+                if difficulty < 1 or difficulty > 5:
+                    difficulty = None
+            except (ValueError, TypeError):
+                difficulty = None
         
-        # Query by tag using the separate tags table
-        # First, get question IDs that have the requested tag
-        tag_response = tags_table.query(
-            KeyConditionExpression='tag = :tag_val',
-            ExpressionAttributeValues={
-                ':tag_val': tag
-            },
-            ProjectionExpression='question_id'
-        )
+        # Query the main questions table directly with category filter
+        # Updated schema stores category directly in questions table
+        scan_params = {
+            'Limit': num_questions * 3  # Get more items to allow for filtering and randomization
+        }
         
-        question_ids = [item['question_id'] for item in tag_response.get('Items', [])]
-        
-        if not question_ids:
-            items = []
-        else:
-            # Randomly select question IDs to fetch
-            selected_ids = random.sample(question_ids, min(num_questions * 2, len(question_ids)))
+        # Filter by category - the data shows categories stored as a list
+        if category != 'general':
             
-            # Batch get questions by ID
-            items = []
-            # DynamoDB batch_get_item has a limit of 100 items per request
-            for i in range(0, len(selected_ids), 100):
-                batch_ids = selected_ids[i:i+100]
-                batch_response = dynamodb.batch_get_item(
-                    RequestItems={
-                        questions_table_name: {
-                            'Keys': [{'id': qid} for qid in batch_ids],
-                            'ProjectionExpression': 'id, question, title, passage, answer, tags'
-                        }
-                    }
-                )
-                items.extend(batch_response['Responses'].get(questions_table_name, []))
+            
+            # Use boto3's Attr for proper DynamoDB list contains operation
+            # This handles the DynamoDB list format correctly
+            # Data shows categories stored as: "categories": {"L": [{"S": "business"}]}
+            filter_expression = Attr('categories').contains(category)
+            
+            scan_params['FilterExpression'] = filter_expression
+        
+        # Scan the questions table
+        response = questions_table.scan(**scan_params)
+        items = response.get('Items', [])
+        
+        # Filter by difficulty if specified
+        if difficulty is not None:
+            items = [item for item in items if item.get('difficulty') == difficulty]
         
         if not items:
             return {
@@ -161,7 +170,7 @@ def lambda_handler(event, context):
                     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({
-                    'error': f'No questions found for tag: {tag}'
+                    'error': f'No questions found for category: {category}' + (f' with difficulty: {difficulty}' if difficulty else '')
                 })
             }
         
@@ -184,12 +193,18 @@ def lambda_handler(event, context):
             'body': json.dumps({
                 'questions': selected_questions,
                 'count': len(selected_questions),
-                'tag': tag,
+                'category': category,
+                'difficulty': difficulty,
                 'requested_count': num_questions
             }, cls=DecimalEncoder)  # Use custom encoder for DynamoDB Decimal types
         }
         
     except Exception as e:
+        # Log the error for debugging
+        print(f"Error in fetch_questions lambda: {str(e)}")
+        print(f"Event: {json.dumps(event)}")
+        print(f"Categories table exists: {USE_CATEGORIES_TABLE}")
+        
         # Return a proper error response with CORS headers
         # API Gateway requires specific response format
         return {
@@ -201,6 +216,10 @@ def lambda_handler(event, context):
                 "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
             },
             "body": json.dumps({
-                "error": f"Unexpected error in lambda handler: {str(e)}"
+                "error": f"Unexpected error in lambda handler: {str(e)}",
+                "debug_info": {
+                    "categories_table_available": USE_CATEGORIES_TABLE,
+                    "category_requested": query_params.get('category', 'general') if 'query_params' in locals() else 'unknown'
+                }
             })
         } 

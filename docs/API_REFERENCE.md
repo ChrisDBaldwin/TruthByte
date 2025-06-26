@@ -72,16 +72,18 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 All endpoints below require JWT authentication.
 
 #### GET `/fetch-questions`
-**Purpose**: Retrieve randomized questions by tag  
+**Purpose**: Retrieve randomized questions by category and difficulty  
 **Authentication**: Bearer token required
 
 **Query Parameters:**
-- `tag` (optional): Category filter (default: "general")
-- `count` (optional): Number of questions (default: 5, max: 10)
+- `category` (optional): Category filter (default: "general")
+- `difficulty` (optional): Difficulty filter 1-5 (default: all difficulties)
+- `num_questions` (optional): Number of questions (default: 5, max: 10)
+- `tag` (optional): Legacy parameter, use `category` instead
 
 **Example Request:**
 ```http
-GET /fetch-questions?tag=science&count=7
+GET /fetch-questions?category=science&difficulty=3&num_questions=7
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 ```
@@ -96,11 +98,14 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
       "title": "Ethanol fuel energy balance",
       "passage": "All biomass goes through at least some of these steps...",
       "answer": false,
-      "tags": ["science", "energy", "general"]
+      "categories": ["science", "energy"],
+      "difficulty": 3,
+      "tags": ["science", "energy"]
     }
   ],
   "count": 1,
-  "tag": "science",
+  "category": "science",
+  "difficulty": 3,
   "requested_count": 7
 }
 ```
@@ -134,6 +139,28 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 }
 ```
 
+#### GET `/categories`
+**Purpose**: Retrieve available categories with question counts  
+**Authentication**: Bearer token required
+
+**Response:**
+```json
+{
+  "categories": [
+    {
+      "name": "science",
+      "count": 75
+    },
+    {
+      "name": "history", 
+      "count": 50
+    }
+  ],
+  "total_categories": 8,
+  "total_questions": 500
+}
+```
+
 #### POST `/propose-question`
 **Purpose**: Submit user-generated questions for review  
 **Authentication**: Bearer token required
@@ -145,6 +172,8 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
   "title": "string",
   "passage": "string",
   "suggested_answer": boolean,
+  "categories": ["string"],
+  "difficulty": 3,
   "tags": ["string"],
   "submitter_id": "string"
 }
@@ -186,7 +215,9 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
   "title": "string",        // Question title/summary
   "passage": "string",      // Context passage
   "answer": boolean,        // Canonical true/false answer
-  "tags": ["string"]        // Category tags
+  "categories": ["string"], // Primary category system
+  "difficulty": 3,          // Difficulty rating 1-5 (1=easy, 5=hard)
+  "tags": ["string"]        // Legacy field, use categories instead
 }
 ```
 

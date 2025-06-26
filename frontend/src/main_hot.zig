@@ -46,9 +46,8 @@ pub fn main() !void {
 
         if (rl.isKeyPressed(.f5)) force_reload = true;
 
-        watch(&arena, &allocator) catch |err| {
+        watch(&arena, &allocator) catch {
             // Reload failed, continue
-            _ = err;
         };
     }
 

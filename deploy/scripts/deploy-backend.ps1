@@ -75,7 +75,10 @@ if (-not $SkipPackaging) {
         @{name="propose-question"; path="../../backend/lambda/propose_question.py"},
         @{name="get-token"; path="../../backend/lambda/get_token.py"},
         @{name="auth-ping"; path="../../backend/lambda/auth_ping.py"},
-        @{name="get-user"; path="../../backend/lambda/get_user.py"}
+        @{name="get-user"; path="../../backend/lambda/get_user.py"},
+        @{name="get-categories"; path="../../backend/lambda/get_categories.py"},
+        @{name="get-user-submissions"; path="../../backend/lambda/get_user_submissions.py"},
+        @{name="approve-question"; path="../../backend/lambda/approve_question.py"}
     )
 
     foreach ($func in $functions) {
@@ -94,7 +97,7 @@ if (-not $SkipPackaging) {
         Copy-Item $func.path $tempDir
         
         # Also copy the shared module for auth functions
-        if ($func.name -in @("get-token", "auth-ping", "fetch-questions", "submit-answers", "propose-question", "get-user")) {
+        if ($func.name -in @("get-token", "auth-ping", "fetch-questions", "submit-answers", "propose-question", "get-user", "get-categories", "get-user-submissions", "approve-question")) {
             Write-Host "Copying shared auth utilities..."
             # Copy shared files directly to temp directory (not as subdirectory)
             Copy-Item "../../backend/shared/*" $tempDir -Recurse -Force
@@ -130,13 +133,19 @@ if (-not $SkipPackaging) {
         aws s3 cp $zipFile "s3://$artifactBucket/$($func.name).zip"
 
         # Update Lambda function code directly (bypass CloudFormation detection issues)
-        # Redirect output to null to keep deployment logs clean
+        # Only update if function exists (skip for fresh deployments)
         $functionName = "$Environment-truthbyte-$($func.name)"
-        Write-Host "Updating Lambda function code for $functionName..."
-        aws lambda update-function-code `
-            --function-name $functionName `
-            --s3-bucket $artifactBucket `
-            --s3-key "$($func.name).zip" > $null
+        Write-Host "Checking if Lambda function $functionName exists..."
+        $functionExists = aws lambda get-function --function-name $functionName --query 'Configuration.FunctionName' --output text 2>$null
+        if ($functionExists -and $functionExists -ne "None") {
+            Write-Host "Updating Lambda function code for $functionName..."
+            aws lambda update-function-code `
+                --function-name $functionName `
+                --s3-bucket $artifactBucket `
+                --s3-key "$($func.name).zip" > $null
+        } else {
+            Write-Host "Function $functionName does not exist yet - will be created by CloudFormation"
+        }
         
         # Cleanup
         Remove-Item $tempDir -Recurse -Force
@@ -172,13 +181,27 @@ $proposeFunctionArn = aws cloudformation describe-stacks --stack-name "$Environm
 $getTokenFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetTokenFunctionArn`].OutputValue' --output text
 $authPingFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`AuthPingFunctionArn`].OutputValue' --output text
 $getUserFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserFunctionArn`].OutputValue' --output text
+$getCategoriesFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetCategoriesFunctionArn`].OutputValue' --output text
+$getUserSubmissionsFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserSubmissionsFunctionArn`].OutputValue' --output text
+$approveQuestionFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`ApproveQuestionFunctionArn`].OutputValue' --output text
 
 # Deploy API Gateway with custom domain
 Write-Host "Deploying API Gateway with custom domain..."
 aws cloudformation deploy `
     --template-file ../infra/api.yaml `
     --stack-name "$Environment-truthbyte-api" `
-    --parameter-overrides Environment=$Environment FetchQuestionsFunctionArn="$fetchFunctionArn" SubmitAnswerFunctionArn="$submitFunctionArn" ProposeQuestionFunctionArn="$proposeFunctionArn" GetTokenFunctionArn="$getTokenFunctionArn" AuthPingFunctionArn="$authPingFunctionArn" GetUserFunctionArn="$getUserFunctionArn" ApiCertificateArn="$ApiCertificateArn"
+    --parameter-overrides `
+        Environment=$Environment `
+        FetchQuestionsFunctionArn="$fetchFunctionArn" `
+        SubmitAnswerFunctionArn="$submitFunctionArn" `
+        ProposeQuestionFunctionArn="$proposeFunctionArn" `
+        GetTokenFunctionArn="$getTokenFunctionArn" `
+        AuthPingFunctionArn="$authPingFunctionArn" `
+        GetUserFunctionArn="$getUserFunctionArn" `
+        GetCategoriesFunctionArn="$getCategoriesFunctionArn" `
+        ApiCertificateArn="$ApiCertificateArn" `
+        GetUserSubmissionsFunctionArn="$getUserSubmissionsFunctionArn" `
+        ApproveQuestionFunctionArn="$approveQuestionFunctionArn"
 Write-Host "API Gateway deployed"
 Write-Host "Backend deployment complete!"
 Write-Host "API Endpoint: $(aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-api" --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)"

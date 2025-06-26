@@ -28,22 +28,40 @@ Resources:
         - Key: Project
           Value: TruthByte
 
-  # Separate table for tag indexing to support multiple tags per question
-  QuestionTagsTable:
+  # Separate table for category indexing to support multiple categories per question
+  QuestionCategoriesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}-truthbyte-question-tags
+      TableName: !Sub ${Environment}-truthbyte-question-categories
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: tag
+        - AttributeName: category
           AttributeType: S
         - AttributeName: question_id
           AttributeType: S
       KeySchema:
-        - AttributeName: tag
+        - AttributeName: category
           KeyType: HASH
         - AttributeName: question_id
           KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: TruthByte
+
+  # New table for category metadata (name, description, question count, etc.)
+  CategoriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}-truthbyte-categories
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: category_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: category_id
+          KeyType: HASH
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -58,9 +76,32 @@ Resources:
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
+        - AttributeName: author
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: submitted_at
+          AttributeType: N
       KeySchema:
         - AttributeName: id
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: author-index
+          KeySchema:
+            - AttributeName: author
+              KeyType: HASH
+            - AttributeName: submitted_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: submitted_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -138,11 +179,11 @@ Outputs:
     Export:
       Name: !Sub ${Environment}-QuestionsTableName
 
-  QuestionTagsTableName:
-    Description: Name of the question tags table
-    Value: !Ref QuestionTagsTable
+  QuestionCategoriesTableName:
+    Description: Name of the question categories table
+    Value: !Ref QuestionCategoriesTable
     Export:
-      Name: !Sub ${Environment}-QuestionTagsTableName
+      Name: !Sub ${Environment}-QuestionCategoriesTableName
 
   SubmittedQuestionsTableName:
     Description: Name of the submitted questions table
@@ -198,8 +239,20 @@ Outputs:
     Export:
       Name: !Sub ${Environment}-UsersTableArn
 
-  QuestionTagsTableArn:
-    Description: ARN of the question tags table
-    Value: !GetAtt QuestionTagsTable.Arn
+  QuestionCategoriesTableArn:
+    Description: ARN of the question categories table
+    Value: !GetAtt QuestionCategoriesTable.Arn
     Export:
-      Name: !Sub ${Environment}-QuestionTagsTableArn 
+      Name: !Sub ${Environment}-QuestionCategoriesTableArn
+
+  CategoriesTableArn:
+    Description: ARN of the categories table
+    Value: !GetAtt CategoriesTable.Arn
+    Export:
+      Name: !Sub ${Environment}-CategoriesTableArn
+
+  CategoriesTableName:
+    Description: Name of the categories table
+    Value: !Ref CategoriesTable
+    Export:
+      Name: !Sub ${Environment}-CategoriesTableName 
