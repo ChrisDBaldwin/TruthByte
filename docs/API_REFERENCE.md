@@ -165,25 +165,76 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 **Purpose**: Submit user-generated questions for review  
 **Authentication**: Bearer token required
 
+**🔒 Security Features:**
+- **Input Validation**: Comprehensive validation of all fields
+- **Content Sanitization**: Removes dangerous characters and patterns
+- **Rate Limiting**: 3 questions/hour, 10/day per user
+- **Injection Prevention**: Blocks XSS, code injection, binary content
+- **Length Limits**: Questions 10-200 chars, categories 1-50 chars each
+
 **Request Body:**
 ```json
 {
-  "question": "string",
-  "title": "string",
-  "passage": "string",
-  "suggested_answer": boolean,
-  "categories": ["string"],
-  "difficulty": 3,
-  "tags": ["string"],
-  "submitter_id": "string"
+  "question": "string",        // 10-200 characters, must end with punctuation
+  "title": "string",           // Optional, max 100 characters
+  "passage": "string",         // Optional, max 500 characters
+  "answer": boolean,           // Required true/false answer
+  "categories": ["string"],    // 1-5 categories, each 1-50 chars
+  "difficulty": 3              // Optional, 1-5 difficulty rating
 }
 ```
 
-**Response:**
+**Validation Rules:**
+- **Question**: 10-200 characters, must end with punctuation, minimum 5 letters
+- **Categories**: 1-5 categories, each 1-50 characters, letters/numbers/spaces/hyphens/underscores only
+- **Title**: Optional, max 100 characters
+- **Passage**: Optional, max 500 characters
+- **Answer**: Required boolean
+
+**Success Response:**
 ```json
 {
-  "message": "Question submitted for review",
-  "submission_id": "sub_123456789"
+  "success": true,
+  "data": {
+    "id": "q_a1b2c3d4",
+    "question": "Is renewable energy more cost-effective than fossil fuels?",
+    "answer": true,
+    "title": "Renewable Energy Economics", 
+    "passage": "Recent studies show renewable energy costs...",
+    "categories": ["science", "economics"],
+    "difficulty": 3,
+    "status": "pending",
+    "submitted_at": 1710000000,
+    "author": "user123",
+    "accepted": false
+  }
+}
+```
+
+**Error Responses:**
+```json
+// Rate limit exceeded (429)
+{
+  "success": false,
+  "error": "Rate limit exceeded. Please wait before submitting another question.",
+  "retry_after": 3600
+}
+
+// Validation failed (400)
+{
+  "success": false,
+  "error": "Input validation failed",
+  "details": [
+    "Question must be at least 10 characters long",
+    "Categories can only contain letters, numbers, spaces, hyphens, and underscores"
+  ]
+}
+
+// Suspicious content detected (400)
+{
+  "success": false,
+  "error": "Input validation failed",
+  "details": ["Question contains suspicious content"]
 }
 ```
 
@@ -285,7 +336,15 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 
 ## Rate Limiting
 
-Currently no rate limiting is implemented, but requests are subject to AWS Lambda concurrent execution limits.
+**Question Submission Rate Limits:**
+- **3 questions per hour** per user
+- **10 questions per day** per user
+- **HTTP 429** status code when limits exceeded
+- **Retry-After** header indicates wait time in seconds
+
+**Other Endpoints:**
+- No rate limiting currently implemented
+- Subject to AWS Lambda concurrent execution limits
 
 ## JWT Token Details
 

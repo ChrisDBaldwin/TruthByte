@@ -12,9 +12,24 @@ const user = @import("user.zig");
 // --- Helper Functions ---
 
 fn submitQuestion(state: *types.GameState) void {
-    if (state.input_len < 5) return; // Minimum question length
+    // Get the question text and tags (ensure null termination)
+    const question_text = state.input_buffer[0..state.input_len];
+    const tags_text = state.tags_input_buffer[0..state.tags_input_len];
+
+    // SECURITY: Validate input before processing
+    if (!input.validateQuestionInput(question_text, tags_text)) {
+        // Invalid input - clear and return to prevent submission
+        state.input_len = 0;
+        state.input_buffer[0] = 0;
+        state.tags_input_len = 0;
+        state.tags_input_buffer[0] = 0;
+        state.input_active = false;
+        state.tags_input_active = false;
+        state.submit_answer_selected = null;
+        return;
+    }
+
     if (state.submit_answer_selected == null) return; // Answer is required
-    if (state.tags_input_len == 0) return; // Tags are required
 
     // Use a much larger buffer for JSON and tag storage
     var json_buffer: [4096]u8 = undefined;
@@ -23,10 +38,6 @@ fn submitQuestion(state: *types.GameState) void {
     var tag_fba = std.heap.FixedBufferAllocator.init(&tag_storage_buffer);
     const allocator = fba.allocator();
     const tag_allocator = tag_fba.allocator();
-
-    // Get the question text and tags (ensure null termination)
-    const question_text = state.input_buffer[0..state.input_len];
-    const tags_text = state.tags_input_buffer[0..state.tags_input_len];
 
     // Safety check: If tags_text contains JSON-like content, it's corrupted
     if (std.mem.indexOf(u8, tags_text, "\"question\"") != null or
@@ -81,16 +92,31 @@ fn submitQuestion(state: *types.GameState) void {
 
     // Parse tags - split by comma and create persistent copies
     var tag_iter = std.mem.splitSequence(u8, tags_text, ",");
+    var tag_count: u32 = 0;
     while (tag_iter.next()) |tag| {
+        if (tag_count >= 5) break; // Limit number of tags
+
         const trimmed = std.mem.trim(u8, tag, " \t\n\r");
-        if (trimmed.len > 0 and trimmed.len < 64) { // Reasonable tag length limit
-            // Create a persistent copy of the trimmed tag
-            const tag_copy = tag_allocator.dupe(u8, trimmed) catch {
-                continue;
-            };
-            tags_list.append(tag_copy) catch {
-                continue;
-            };
+        if (trimmed.len > 0 and trimmed.len <= 50) { // Reasonable tag length limit
+            // SECURITY: Additional validation for each tag
+            var is_valid_tag = true;
+            for (trimmed) |char| {
+                if (!input.isSafeTagChar(char)) {
+                    is_valid_tag = false;
+                    break;
+                }
+            }
+
+            if (is_valid_tag) {
+                // Create a persistent copy of the trimmed tag
+                const tag_copy = tag_allocator.dupe(u8, trimmed) catch {
+                    continue;
+                };
+                tags_list.append(tag_copy) catch {
+                    continue;
+                };
+                tag_count += 1;
+            }
         }
     }
 
