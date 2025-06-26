@@ -293,13 +293,23 @@ See [deploy/README.md](deploy/README.md) for detailed deployment instructions.
 ```json
 {
   "id": "q003",
-  "tags": ["health"],
+  "categories": ["health"],
+  "difficulty": 4,
   "question": "is pain experienced in a missing body part or paralyzed area",
   "title": "Phantom pain",
   "passage": "Phantom pain sensations are described as perceptions that an individual experiences relating to a limb or an organ that is not physically part of the body. Limb loss is a result of either removal by amputation or congenital limb deficiency. However, phantom limb sensations can also occur following nerve avulsion or spinal cord injury.",
   "answer": true
 }
 ```
+
+**New Schema Fields:**
+- `categories` (array): Replaces `tags` for clarity and consistency
+- `difficulty` (integer 1-5): Difficulty rating where 1=Very Easy, 2=Easy, 3=Medium, 4=Hard, 5=Very Hard
+
+**Backwards Compatibility:**
+- API still accepts `tag` parameter alongside `category`
+- Old `tags` field is maintained in data structures for compatibility
+- Migration tools provided to update existing data
 
 ### User Submission
 

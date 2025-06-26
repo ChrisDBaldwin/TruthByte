@@ -4,13 +4,13 @@ Complete reference for TruthByte's DynamoDB database architecture, schema, and d
 
 ## Architecture Overview
 
-TruthByte uses a **dual-table design** optimized for tag-based queries without expensive table scans:
+TruthByte uses a **multi-table design** optimized for category-based queries without expensive table scans:
 
 ```
-Questions Table      Question-Tags Table
-     ↓                      ↓
-  Full Data         ←→   Tag Indexing
-(by question ID)      (by tag + question ID)
+Questions Table      Question-Categories Table    Categories Table
+     ↓                      ↓                         ↓
+  Full Data         ←→   Category Indexing      Category Metadata
+(by question ID)      (by category + question ID)  (counts, names)
 ```
 
 ### Key Benefits
@@ -32,12 +32,14 @@ Billing: Pay-per-request
 **Attributes:**
 ```json
 {
-  "id": "q001",                    // Unique question identifier
-  "question": "string",            // The question text
-  "title": "string",               // Question title/summary  
-  "passage": "string",             // Context passage
-  "answer": true,                  // Canonical true/false answer
-  "tags": ["science", "general"]   // Category tags (list)
+  "id": "q001",                         // Unique question identifier
+  "question": "string",                 // The question text
+  "title": "string",                    // Question title/summary  
+  "passage": "string",                  // Context passage
+  "answer": true,                       // Canonical true/false answer
+  "categories": ["science", "general"], // Primary categories (list)
+  "difficulty": 3,                      // Difficulty rating 1-5
+  "tags": ["science", "general"]        // Legacy field for backwards compatibility
 }
 ```
 
@@ -46,11 +48,11 @@ Billing: Pay-per-request
 - **Single Read**: Get specific question by ID
 - **No Scans**: Never scan this table directly
 
-### 2. Question-Tags Table
-**Table Name**: `{environment}-truthbyte-question-tags`
+### 2. Question-Categories Table
+**Table Name**: `{environment}-truthbyte-question-categories`
 
 ```
-Partition Key: tag (String)
+Partition Key: category (String)
 Sort Key: question_id (String) 
 Billing: Pay-per-request
 ```
@@ -58,17 +60,41 @@ Billing: Pay-per-request
 **Attributes:**
 ```json
 {
-  "tag": "science",               // Category tag
-  "question_id": "q001"           // Question identifier
+  "category": "science",          // Category name
+  "question_id": "q001",          // Question identifier
+  "difficulty": 3                 // Question difficulty (for filtering)
 }
 ```
 
 **Usage Pattern:**
-- **Query by Tag**: Get all question IDs for a tag
+- **Query by Category**: Get all question IDs for a category
+- **Difficulty Filtering**: Filter questions by difficulty within category
 - **Random Sampling**: Client-side randomization of results
-- **High Performance**: O(1) tag lookups
+- **High Performance**: O(1) category lookups
 
-### 3. Answers Table
+### 3. Categories Table
+**Table Name**: `{environment}-truthbyte-categories`
+
+```
+Partition Key: name (String)
+Billing: Pay-per-request
+```
+
+**Attributes:**
+```json
+{
+  "name": "science",              // Category name
+  "count": 75,                    // Total questions in category
+  "display_name": "Science"       // Human-readable name
+}
+```
+
+**Usage Pattern:**
+- **Category Listing**: Get all available categories with counts
+- **Category Management**: Update counts and metadata
+- **UI Population**: Provide category selection interface data
+
+### 4. Answers Table
 **Table Name**: `{environment}-truthbyte-answers`
 
 ```
@@ -93,7 +119,7 @@ Billing: Pay-per-request
 - **Question Stats**: Query all answers for specific question
 - **Trust Scoring**: Calculate user reliability
 
-### 4. Sessions Table
+### 5. Sessions Table
 **Table Name**: `{environment}-truthbyte-sessions`
 
 ```
@@ -118,7 +144,7 @@ Billing: Pay-per-request
 - **IP Tracking**: Query sessions by hashed IP (GSI)
 - **Abuse Prevention**: Track IP-based patterns
 
-### 5. Submitted Questions Table
+### 6. Submitted Questions Table
 **Table Name**: `{environment}-truthbyte-submitted-questions`
 
 ```
@@ -151,11 +177,12 @@ Billing: Pay-per-request
 ### Efficient Question Fetching
 
 ```python
-# 1. Query tag index for question IDs
-tag_response = question_tags_table.query(
-    KeyConditionExpression=Key('tag').eq('science')
+# 1. Query category index for question IDs
+category_response = question_categories_table.query(
+    KeyConditionExpression=Key('category').eq('science'),
+    FilterExpression=Attr('difficulty').eq(3) if difficulty else None
 )
-question_ids = [item['question_id'] for item in tag_response['Items']]
+question_ids = [item['question_id'] for item in category_response['Items']]
 
 # 2. Random sampling (client-side)
 import random
@@ -196,9 +223,10 @@ user_answers = answers_table.query(
 
 ### Adding New Questions
 
-1. **Question Upload**: Add to questions table
-2. **Tag Indexing**: Add entries to question-tags table for each tag
-3. **Default Tag**: Always include "general" tag for universal queries
+1. **Question Upload**: Add to questions table with categories and difficulty
+2. **Category Indexing**: Add entries to question-categories table for each category
+3. **Category Counts**: Update category metadata in categories table
+4. **Default Tag**: Always include "general" tag for universal queries
 
 ```python
 # Add question

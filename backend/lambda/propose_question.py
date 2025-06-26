@@ -9,7 +9,8 @@ from typing import Dict, Any
 # Add the shared directory to Python path for Lambda imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
-from auth_utils import verify_token
+from auth_utils import verify_token, extract_user_id
+from user_utils import get_or_create_user
 
 def lambda_handler(event, context):
     """
@@ -63,10 +64,28 @@ def lambda_handler(event, context):
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({'error': 'Invalid token'})
             }
+        
+        # Validate and get user ID - needed for tracking question authorship
+        try:
+            user_id = extract_user_id(headers)
+            # Ensure user exists in database (creates if not)
+            user = get_or_create_user(user_id)
+        except ValueError as e:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "https://truthbyte.voidtalker.com",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
+                },
+                'body': json.dumps({'error': str(e)})
+            }
+        
         # Parse the request body from API Gateway event
         # API Gateway wraps the body in a "body" field as a string
         body = json.loads(event["body"]) if "body" in event else event
@@ -77,8 +96,10 @@ def lambda_handler(event, context):
         table = dynamodb.Table(table_name)
         
         # Validate required fields for TruthByte format
-        required_fields = {"question", "answer", "tags"}
-        if not all(field in body for field in required_fields):
+        required_fields = {"question", "answer"}
+        categories_field = body.get("categories") or body.get("tags")  # Support both for backwards compatibility
+        
+        if not all(field in body for field in required_fields) or not categories_field:
             return {
                 "statusCode": 400,
                 "headers": {
@@ -89,7 +110,7 @@ def lambda_handler(event, context):
                 },
                 "body": json.dumps({
                     "success": False,
-                    "error": "Missing required fields: question, answer (boolean), tags"
+                    "error": "Missing required fields: question, answer (boolean), categories"
                 })
             }
         
@@ -109,6 +130,15 @@ def lambda_handler(event, context):
                 })
             }
         
+        # Get difficulty from body (optional, default to 3 - medium)
+        difficulty = body.get("difficulty", 3)
+        try:
+            difficulty = int(difficulty)
+            if difficulty < 1 or difficulty > 5:
+                difficulty = 3
+        except (ValueError, TypeError):
+            difficulty = 3
+        
         # Generate a unique question ID
         question_id = f"q_{uuid.uuid4().hex[:8]}"
         
@@ -119,9 +149,12 @@ def lambda_handler(event, context):
             "title": body.get("title", ""),  # Optional context title
             "passage": body.get("passage", ""),  # Optional background passage
             "answer": body["answer"],  # Boolean answer
-            "tags": body["tags"],
+            "categories": categories_field,  # Use either categories or tags (backwards compatibility)
+            "difficulty": difficulty,  # Difficulty rating 1-5
             "status": "pending",  # Questions start as pending until approved
-            "submitted_at": int(time.time())  # Timestamp for review queue
+            "submitted_at": int(time.time()),  # Timestamp for review queue
+            "author": user_id,  # User ID of the question author
+            "accepted": False  # Track approval status for rewards
         }
         
         # Use put_item with condition expression to prevent duplicates
