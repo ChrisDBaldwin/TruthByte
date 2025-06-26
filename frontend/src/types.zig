@@ -82,7 +82,7 @@ pub const UserSessionResponse = struct {
     session_id: []const u8 = "",
     token: []const u8 = "",
     trust: f32 = 0.0,
-    invitable: bool = false,
+
     responses: [7]QuestionResponse,
     timestamp: i64,
 };
@@ -144,7 +144,6 @@ pub const GameState = struct {
     },
     user_trust: f32 = 0.0,
     sessions_completed: u32 = 0,
-    invited_shown: bool = false,
     loading_start_time: i64 = 0,
     // Category selection state
     available_categories: [20]Category = undefined, // Max 20 categories

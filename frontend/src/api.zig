@@ -88,7 +88,7 @@ pub fn startSessionWithCategory(state: *types.GameState, category: []const u8, d
         const user_id_slice = user.getUserIDSlice();
         const category_ptr = if (category.len > 0) category.ptr else null;
         const diff_param = difficulty orelse 0;
-        utils.js.fetch_questions_enhanced(7, category_ptr, category.len, diff_param, user_id_slice.ptr, user_id_slice.len, on_questions_received);
+        utils.js.fetch_questions(7, category_ptr, category.len, diff_param, user_id_slice.ptr, user_id_slice.len, on_questions_received);
     } else {
         // For native builds, use fallback immediately
         initSessionWithFallback(state);

@@ -496,13 +496,8 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.sessions_completed += 1; // Track completed sessions
                 state.user_session.trust = utils.calcTrustScore(state);
                 state.user_trust = state.user_session.trust; // Update user trust for UI gating
-                state.user_session.invitable = state.user_session.trust >= 0.85;
+
                 api.submitResponseBatch(&state.user_session);
-                if (state.user_session.trust >= 0.85 and !state.invited_shown) {
-                    utils.showInviteModal();
-                    state.invited_shown = true;
-                    utils.js.set_invited_shown(true);
-                }
             }
             state.response.answer = null;
             state.selected = null;

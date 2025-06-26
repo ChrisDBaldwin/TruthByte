@@ -162,76 +162,11 @@ var TruthByteLib = {
     // ToDo: Implement this
   },
 
-  // Fetch questions from the backend
-  // Parameters: num_questions (optional), tag (optional), user_id_ptr, user_id_len, callback_ptr
-  fetch_questions: function(num_questions, tag_ptr, tag_len, user_id_ptr, user_id_len, callback_ptr) {
-    var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
-    var params = new URLSearchParams();
-    
-    if (num_questions > 0) {
-      params.append('num_questions', num_questions.toString());
-    }
-    
-    if (tag_ptr && tag_len > 0) {
-      var tag = UTF8ToString(tag_ptr, tag_len);
-      params.append('tag', tag);
-    }
-    
-    if (params.toString()) {
-      url += '?' + params.toString();
-    }
-    
-    var headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Add Authorization header if we have a token
-    if (_authToken) {
-      headers['Authorization'] = 'Bearer ' + _authToken;
-    }
-    
-    // Add User ID header from Zig
-    var userId = user_id_ptr && user_id_len > 0 ? UTF8ToString(user_id_ptr, user_id_len) : '';
-    headers['X-User-ID'] = userId;
-    
-    fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      headers: headers
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json();
-    })
-    .then(data => {
-      // Convert response to JSON string and pass to Zig callback
-      var jsonStr = JSON.stringify(data);
-      var len = lengthBytesUTF8(jsonStr) + 1;
-      var ptr = _malloc(len);
-      stringToUTF8(jsonStr, ptr, len);
-      
-      // Call Zig callback with success (1), data pointer, and length
-      dynCall_viii(callback_ptr, 1, ptr, len);
-      _free(ptr);
-    })
-    .catch(error => {
-      console.error('❌ Fetch questions error:', error);
-      var errorStr = error.message || 'Unknown error';
-      var len = lengthBytesUTF8(errorStr) + 1;
-      var ptr = _malloc(len);
-      stringToUTF8(errorStr, ptr, len);
-      
-      // Call Zig callback with failure (0), error pointer, and length
-      dynCall_viii(callback_ptr, 0, ptr, len);
-      _free(ptr);
-    });
-  },
+
 
   // Fetch questions with category and difficulty support
   // Parameters: num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr
-  fetch_questions_enhanced: function(num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr) {
+  fetch_questions: function(num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr) {
     var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
     var params = new URLSearchParams();
     

@@ -13,7 +13,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     pub extern fn get_token_len() usize;
     pub extern fn get_canvas_width() i32;
     pub extern fn get_canvas_height() i32;
-    pub extern fn set_invited_shown(val: bool) void;
+
     pub extern fn get_input_x() i32;
     pub extern fn get_input_y() i32;
     pub extern fn get_input_active() bool;
@@ -23,8 +23,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     pub extern fn auth_ping(callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
 
     // API functions
-    pub extern fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
-    pub extern fn fetch_questions_enhanced(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
+    pub extern fn fetch_questions(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn fetch_categories(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn submit_answers(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
     pub extern fn propose_question(json_ptr: [*]const u8, json_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void;
@@ -107,12 +106,6 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         return 3;
     }
 
-    pub fn set_invited_shown(val: bool) void {
-        // no-op or panic
-        _ = val;
-        std.debug.print("set_invited_shown is not available in native build\n", .{});
-    }
-
     pub fn get_canvas_width() i32 {
         return rl.getScreenWidth();
     }
@@ -145,17 +138,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     }
 
     // Stub API functions for native builds
-    pub fn fetch_questions(num_questions: i32, tag_ptr: ?[*]const u8, tag_len: usize, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
-        _ = num_questions;
-        _ = tag_ptr;
-        _ = tag_len;
-        _ = user_id_ptr;
-        _ = user_id_len;
-        _ = callback_ptr;
-        std.debug.print("fetch_questions is not available in native build\n", .{});
-    }
-
-    pub fn fetch_questions_enhanced(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
+    pub fn fetch_questions(num_questions: i32, category_ptr: ?[*]const u8, category_len: usize, difficulty: u8, user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
         _ = num_questions;
         _ = category_ptr;
         _ = category_len;
@@ -163,7 +146,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
         _ = user_id_ptr;
         _ = user_id_len;
         _ = callback_ptr;
-        std.debug.print("fetch_questions_enhanced is not available in native build\n", .{});
+        std.debug.print("fetch_questions is not available in native build\n", .{});
     }
 
     pub fn fetch_categories(user_id_ptr: [*]const u8, user_id_len: usize, callback_ptr: *const fn (success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void) void {
@@ -389,5 +372,3 @@ pub fn currentResponse(state: *types.GameState) *types.QuestionResponse {
 pub fn calcTrustScore(state: *types.GameState) f32 {
     return @as(f32, @floatFromInt(state.session.correct)) / 7.0;
 }
-
-pub fn showInviteModal() void {}
