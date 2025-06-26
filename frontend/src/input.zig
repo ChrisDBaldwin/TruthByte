@@ -4,6 +4,114 @@ const builtin = @import("builtin");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
 
+// --- Input Security Constants ---
+
+const MAX_QUESTION_LENGTH = 200;
+const MAX_TAG_LENGTH = 50;
+const MAX_TAGS_TOTAL_LENGTH = 150;
+const MIN_QUESTION_LENGTH = 10;
+
+// --- Input Validation Functions ---
+
+/// Check if a character is safe for text input (printable ASCII + basic punctuation)
+fn isSafeChar(char: u8) bool {
+    return switch (char) {
+        // Basic printable ASCII
+        32...126 => true,
+        // Allow some common extended characters but be restrictive
+        else => false,
+    };
+}
+
+/// Check if a character is allowed in tags (more restrictive)
+pub fn isSafeTagChar(char: u8) bool {
+    return switch (char) {
+        // Letters, numbers, spaces, hyphens, underscores
+        'a'...'z', 'A'...'Z', '0'...'9', ' ', '-', '_' => true,
+        else => false,
+    };
+}
+
+/// Sanitize input by removing dangerous characters and limiting length
+fn sanitizeInput(input: []const u8, output: []u8, max_len: usize, is_tag: bool) usize {
+    var out_len: usize = 0;
+    var consecutive_spaces: u32 = 0;
+
+    for (input) |char| {
+        if (out_len >= max_len - 1) break; // Leave room for null terminator
+
+        // Choose validation function based on input type
+        const is_safe = if (is_tag) isSafeTagChar(char) else isSafeChar(char);
+
+        if (is_safe) {
+            // Limit consecutive spaces
+            if (char == ' ') {
+                consecutive_spaces += 1;
+                if (consecutive_spaces > 2) continue; // Skip excessive spaces
+            } else {
+                consecutive_spaces = 0;
+            }
+
+            output[out_len] = char;
+            out_len += 1;
+        }
+        // Silently drop unsafe characters
+    }
+
+    // Trim trailing spaces
+    while (out_len > 0 and output[out_len - 1] == ' ') {
+        out_len -= 1;
+    }
+
+    return out_len;
+}
+
+/// Validate that input doesn't contain suspicious patterns
+fn containsSuspiciousContent(input: []const u8) bool {
+    // Check for binary content (non-printable characters)
+    for (input) |char| {
+        if (char < 32 and char != '\n' and char != '\r' and char != '\t') {
+            return true; // Contains binary/control characters
+        }
+    }
+
+    // Check for common injection patterns
+    const suspicious_patterns = [_][]const u8{
+        "<script",
+        "javascript:",
+        "data:",
+        "vbscript:",
+        "onload=",
+        "onerror=",
+        "onclick=",
+        "eval(",
+        "document.",
+        "window.",
+        "\\x",
+        "\\u",
+        "%3C", // URL encoded <
+        "%3E", // URL encoded >
+        "&#", // HTML entities
+    };
+
+    // Convert to lowercase for case-insensitive checking
+    var lowercase_buffer: [512]u8 = undefined;
+    if (input.len > lowercase_buffer.len) return true; // Suspiciously long input
+
+    for (input, 0..) |char, i| {
+        lowercase_buffer[i] = std.ascii.toLower(char);
+    }
+    const lowercase_input = lowercase_buffer[0..input.len];
+
+    for (suspicious_patterns) |pattern| {
+        if (std.mem.indexOf(u8, lowercase_input, pattern) != null) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // --- Input Event Types ---
 
 pub const InputEvent = struct {
@@ -106,17 +214,31 @@ pub fn handleTextInput(state: *types.GameState) void {
     if (utils.js.isTextInputFocused()) {
         const html_input_text = utils.js.getTextInputValueSlice();
 
+        // SECURITY: Validate and sanitize HTML input
+        if (containsSuspiciousContent(html_input_text)) {
+            // Clear malicious input and deactivate input field
+            if (state.input_active) {
+                state.input_len = 0;
+                state.input_buffer[0] = 0;
+                state.input_active = false;
+            } else if (state.tags_input_active) {
+                state.tags_input_len = 0;
+                state.tags_input_buffer[0] = 0;
+                state.tags_input_active = false;
+            }
+            _ = utils.js.clearTextInput(); // Clear the HTML input as well
+            return;
+        }
+
         if (state.input_active) {
-            // Sync HTML input text to question input buffer
-            const copy_len = @min(html_input_text.len, state.input_buffer.len - 1);
-            @memcpy(state.input_buffer[0..copy_len], html_input_text[0..copy_len]);
-            state.input_len = copy_len;
+            // Sanitize and copy to question input buffer
+            const sanitized_len = sanitizeInput(html_input_text, state.input_buffer[0..], @min(MAX_QUESTION_LENGTH, state.input_buffer.len), false);
+            state.input_len = sanitized_len;
             state.input_buffer[state.input_len] = 0; // Null terminate
         } else if (state.tags_input_active) {
-            // Sync HTML input text to tags input buffer
-            const copy_len = @min(html_input_text.len, state.tags_input_buffer.len - 1);
-            @memcpy(state.tags_input_buffer[0..copy_len], html_input_text[0..copy_len]);
-            state.tags_input_len = copy_len;
+            // Sanitize and copy to tags input buffer
+            const sanitized_len = sanitizeInput(html_input_text, state.tags_input_buffer[0..], @min(MAX_TAGS_TOTAL_LENGTH, state.tags_input_buffer.len), true);
+            state.tags_input_len = sanitized_len;
             state.tags_input_buffer[state.tags_input_len] = 0; // Null terminate
         }
         return; // Skip raylib input handling when HTML input is active
@@ -125,12 +247,17 @@ pub fn handleTextInput(state: *types.GameState) void {
     // Fallback to raylib input handling (for desktop/native builds)
     var key = rl.getCharPressed();
     while (key > 0) : (key = rl.getCharPressed()) {
-        if (key >= 32 and key <= 126) {
-            if (state.input_active and state.input_len < state.input_buffer.len - 1) {
-                state.input_buffer[state.input_len] = @as(u8, @intCast(key));
+        // SECURITY: Validate character before adding
+        const char = @as(u8, @intCast(key));
+
+        if (state.input_active and state.input_len < @min(MAX_QUESTION_LENGTH, state.input_buffer.len - 1)) {
+            if (isSafeChar(char)) {
+                state.input_buffer[state.input_len] = char;
                 state.input_len += 1;
-            } else if (state.tags_input_active and state.tags_input_len < state.tags_input_buffer.len - 1) {
-                state.tags_input_buffer[state.tags_input_len] = @as(u8, @intCast(key));
+            }
+        } else if (state.tags_input_active and state.tags_input_len < @min(MAX_TAGS_TOTAL_LENGTH, state.tags_input_buffer.len - 1)) {
+            if (isSafeTagChar(char)) {
+                state.tags_input_buffer[state.tags_input_len] = char;
                 state.tags_input_len += 1;
             }
         }
@@ -149,4 +276,64 @@ pub fn handleTextInput(state: *types.GameState) void {
     // Null-terminate both buffers
     state.input_buffer[state.input_len] = 0;
     state.tags_input_buffer[state.tags_input_len] = 0;
+}
+
+/// Validate question input before submission
+pub fn validateQuestionInput(question: []const u8, tags: []const u8) bool {
+    // Check minimum length
+    if (question.len < MIN_QUESTION_LENGTH) return false;
+
+    // Check maximum length
+    if (question.len > MAX_QUESTION_LENGTH) return false;
+
+    // Check for suspicious content
+    if (containsSuspiciousContent(question)) return false;
+    if (containsSuspiciousContent(tags)) return false;
+
+    // Ensure question ends with a question mark or similar
+    const trimmed_question = std.mem.trim(u8, question, " \t\n\r");
+    if (trimmed_question.len == 0) return false;
+
+    const last_char = trimmed_question[trimmed_question.len - 1];
+    if (last_char != '?' and last_char != '.' and last_char != '!') {
+        return false; // Questions should end with punctuation
+    }
+
+    // Check for repeated characters (spam detection)
+    if (hasExcessiveRepeatedChars(trimmed_question)) return false;
+
+    // Ensure question has some meaningful content (not just punctuation/spaces)
+    var letter_count: u32 = 0;
+    for (trimmed_question) |char| {
+        if ((char >= 'a' and char <= 'z') or (char >= 'A' and char <= 'Z')) {
+            letter_count += 1;
+        }
+    }
+    if (letter_count < 5) return false; // Need at least 5 letters
+
+    // Tags validation
+    if (tags.len == 0) return false; // Must have at least one tag
+    if (tags.len > MAX_TAGS_TOTAL_LENGTH) return false;
+
+    return true;
+}
+
+/// Check for excessive repeated characters (spam detection)
+fn hasExcessiveRepeatedChars(text: []const u8) bool {
+    if (text.len < 4) return false;
+
+    var consecutive_count: u32 = 1;
+    var prev_char: u8 = text[0];
+
+    for (text[1..]) |char| {
+        if (char == prev_char) {
+            consecutive_count += 1;
+            if (consecutive_count > 4) return true; // More than 4 consecutive same chars
+        } else {
+            consecutive_count = 1;
+            prev_char = char;
+        }
+    }
+
+    return false;
 }
