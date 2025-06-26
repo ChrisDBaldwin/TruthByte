@@ -596,8 +596,9 @@ var TruthByteLib = {
     }
     
     // Try contenteditable div instead of input - sometimes works better on mobile
-    var textInput = document.createElement('div');
-    textInput.contentEditable = true;
+    // Create a simple text input that only accepts plain text
+    var textInput = document.createElement('input');
+    textInput.type = 'text';
     textInput.id = 'truthbyte-text-input';
     
     // Styling for contenteditable div
@@ -625,13 +626,12 @@ var TruthByteLib = {
     textInput.style.paddingLeft = '8px';
     textInput.style.boxSizing = 'border-box';
     
-    // Add placeholder functionality for contenteditable
+    // Add placeholder for regular input
     if (placeholder) {
-      textInput.setAttribute('data-placeholder', placeholder);
-      textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
+      textInput.placeholder = placeholder;
     }
     
-        // Add event listeners
+    // Add event listeners
     textInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' || e.key === 'Return') {
         e.preventDefault();
@@ -640,56 +640,140 @@ var TruthByteLib = {
         TruthByteLib.hideTextInput();
         return;
       }
-      
-      // MANUAL BACKSPACE HANDLING for iOS Safari bug
-      if (e.key === 'Backspace') {
-        e.preventDefault(); // Prevent default (broken) backspace
-        
-        var currentText = textInput.textContent || '';
-        if (currentText.length > 0) {
-          // Remove last character manually
-          var newText = currentText.slice(0, -1);
-          textInput.textContent = newText;
-          
-          // Position cursor at end
-          if (newText.length > 0) {
-            var range = document.createRange();
-            var sel = window.getSelection();
-            range.setStart(textInput.firstChild, newText.length);
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-          }
-          
-          // Trigger input event manually for synchronization
-          var inputEvent = new Event('input', { bubbles: true });
-          textInput.dispatchEvent(inputEvent);
-        }
-        return;
-      }
     });
   
-        textInput.addEventListener('input', function(e) {
-      // Remove placeholder when typing
-      var placeholder_span = textInput.querySelector('span[style*="color: #999"]');
-      if (placeholder_span && textInput.textContent.length > 0) {
-        placeholder_span.remove();
+        // SECURITY: Block paste events with binary/malicious content
+    textInput.addEventListener('paste', function(e) {
+      e.preventDefault();
+      
+      var clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+            
+      // Get pasted text
+      var pastedText = clipboardData.getData('text/plain') || clipboardData.getData('text');
+      if (!pastedText) return;
+      
+      // Security validation
+      function containsSuspiciousContent(text) {
+        // Check for binary content (non-printable characters)
+        for (var i = 0; i < text.length; i++) {
+          var charCode = text.charCodeAt(i);
+          if (charCode < 32 && charCode !== 9 && charCode !== 10 && charCode !== 13) {
+            return true; // Contains binary/control characters
+          }
+        }
+        
+        // Check for suspicious patterns
+        var suspiciousPatterns = [
+          '<script', 'javascript:', 'data:', 'vbscript:', 'onload=', 'onerror=',
+          'onclick=', 'eval(', 'document.', 'window.', '\\x', '\\u',
+          '%3c', '%3e', '&#'
+        ];
+        
+        // Check for placeholder/invalid content
+        var invalidPatterns = [
+          'question', 'enter question', 'type question', 'your question',
+          'question here', 'ask question', 'placeholder', 'example',
+          'sample', 'test', 'testing', 'asdf', 'qwerty', 'lorem ipsum'
+        ];
+        
+        var lowerText = text.toLowerCase();
+        
+        for (var i = 0; i < suspiciousPatterns.length; i++) {
+          if (lowerText.indexOf(suspiciousPatterns[i]) !== -1) {
+            return true;
+          }
+        }
+        
+        for (var i = 0; i < invalidPatterns.length; i++) {
+          if (lowerText.indexOf(invalidPatterns[i]) !== -1) {
+            return true;
+          }
+        }
+        
+        return false;
+      }
+      
+      // Block suspicious content
+      if (containsSuspiciousContent(pastedText)) {
+        return;
+      }
+      
+      // Sanitize and limit length
+      var sanitized = '';
+      var maxLength = 200; // Question max length
+      var consecutiveSpaces = 0;
+      
+      for (var i = 0; i < Math.min(pastedText.length, maxLength); i++) {
+        var char = pastedText[i];
+        var charCode = char.charCodeAt(0);
+        
+        // Only allow printable ASCII
+        if (charCode >= 32 && charCode <= 126) {
+          if (char === ' ') {
+            consecutiveSpaces++;
+            if (consecutiveSpaces <= 2) {
+              sanitized += char;
+            }
+          } else {
+            consecutiveSpaces = 0;
+            sanitized += char;
+          }
+        }
+      }
+      
+      // Set the sanitized text directly to input value
+      if (sanitized.length > 0) {
+        textInput.value = sanitized;
       }
     });
     
-    textInput.addEventListener('focus', function(e) {
-      // Remove placeholder on focus
-      var placeholder_span = textInput.querySelector('span[style*="color: #999"]');
-      if (placeholder_span) {
-        placeholder_span.remove();
-        textInput.textContent = '';
+    // Simple input validation on typing
+    textInput.addEventListener('input', function(e) {
+      // Limit length and validate characters in real-time
+      var value = textInput.value;
+      var sanitized = '';
+      
+      for (var i = 0; i < Math.min(value.length, 200); i++) {
+        var charCode = value.charCodeAt(i);
+        if (charCode >= 32 && charCode <= 126) {
+          sanitized += value[i];
+        }
+      }
+      
+      if (sanitized !== value) {
+        textInput.value = sanitized;
       }
     });
     
-    textInput.addEventListener('blur', function(e) {
-      // Add placeholder back if empty
-      if (textInput.textContent.trim() === '' && placeholder) {
-        textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
+    // SECURITY: Block drag and drop of files/images
+    textInput.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    
+    textInput.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        console.warn('🚫 File drop blocked - only text input allowed');
+        return;
+      }
+      
+      // Allow text drops but validate them
+      var droppedText = e.dataTransfer.getData('text/plain');
+      if (droppedText) {
+        // Simple sanitization
+        var sanitized = '';
+        for (var i = 0; i < Math.min(droppedText.length, 200); i++) {
+          var charCode = droppedText.charCodeAt(i);
+          if (charCode >= 32 && charCode <= 126) {
+            sanitized += droppedText[i];
+          }
+        }
+        textInput.value = sanitized;
       }
     });
      
@@ -745,8 +829,8 @@ var TruthByteLib = {
       return null;
     }
     
-    // Use textContent for contenteditable divs, value for inputs
-    var value = textInput.textContent || textInput.value || '';
+    // Use value for regular input elements
+    var value = textInput.value || '';
     
     // Allocate memory for the string and copy it
     var len = lengthBytesUTF8(value) + 1;
@@ -761,8 +845,8 @@ var TruthByteLib = {
       return 0;
     }
     
-    // Use textContent for contenteditable divs, value for inputs
-    var value = textInput.textContent || textInput.value || '';
+    // Use value for regular input elements
+    var value = textInput.value || '';
     return lengthBytesUTF8(value);
   },
 
@@ -778,15 +862,8 @@ var TruthByteLib = {
   clearTextInput: function() {
     var textInput = document.getElementById('truthbyte-text-input');
     if (textInput) {
-      // Clear both textContent and value to support both input and contenteditable
-      textInput.textContent = '';
+      // Clear the input value
       textInput.value = '';
-      
-      // Re-add placeholder if it exists
-      var placeholder = textInput.getAttribute('data-placeholder');
-      if (placeholder && textInput.contentEditable === 'true') {
-        textInput.innerHTML = '<span style="color: #999; pointer-events: none;">' + placeholder + '</span>';
-      }
     }
     return true;
   },
@@ -802,31 +879,15 @@ var TruthByteLib = {
       value = UTF8ToString(value_ptr, value_len);
     }
     
-    if (textInput.contentEditable === 'true') {
-      // For contenteditable div
-      textInput.textContent = value;
-      
-      // Move cursor to end
-      setTimeout(function() {
-        if (textInput === document.activeElement && value.length > 0) {
-          var range = document.createRange();
-          var sel = window.getSelection();
-          range.setStart(textInput.firstChild || textInput, value.length);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      }, 10);
-    } else {
-      // For regular input
-      textInput.value = value;
-      
-      setTimeout(function() {
-        if (textInput === document.activeElement) {
-          textInput.setSelectionRange(value.length, value.length);
-        }
-      }, 10);
-    }
+    // For regular input element
+    textInput.value = value;
+    
+    // Move cursor to end
+    setTimeout(function() {
+      if (textInput === document.activeElement) {
+        textInput.setSelectionRange(value.length, value.length);
+      }
+    }, 10);
     
     return true;
   },
