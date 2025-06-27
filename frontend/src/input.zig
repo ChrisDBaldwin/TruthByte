@@ -9,7 +9,7 @@ const utils = @import("utils.zig");
 const MAX_QUESTION_LENGTH = 200;
 const MAX_TAG_LENGTH = 50;
 const MAX_TAGS_TOTAL_LENGTH = 150;
-const MIN_QUESTION_LENGTH = 10;
+const MIN_QUESTION_LENGTH = 5;
 
 // --- Input Validation Functions ---
 
@@ -210,8 +210,11 @@ pub fn getInputEvent(state: *types.GameState) ?InputEvent {
 pub fn handleTextInput(state: *types.GameState) void {
     if (state.game_state != .Submitting or (!state.input_active and !state.tags_input_active)) return;
 
-    // Check if HTML text input is focused - if so, sync text from it
-    if (utils.js.isTextInputFocused()) {
+    // Determine if we should use HTML input (mobile/touch) or raylib input (PC/mouse)
+    const use_html_input = utils.js.isTextInputFocused() and state.last_touch_active;
+
+    // Check if HTML text input is focused AND we're using touch input - if so, sync text from it
+    if (use_html_input) {
         const html_input_text = utils.js.getTextInputValueSlice();
 
         // SECURITY: Validate and sanitize HTML input
@@ -241,10 +244,26 @@ pub fn handleTextInput(state: *types.GameState) void {
             state.tags_input_len = sanitized_len;
             state.tags_input_buffer[state.tags_input_len] = 0; // Null terminate
         }
-        return; // Skip raylib input handling when HTML input is active
+
+        // Handle backspace for HTML input as well
+        if (rl.isKeyPressed(.backspace)) {
+            if (state.input_active and state.input_len > 0) {
+                state.input_len -= 1;
+                state.input_buffer[state.input_len] = 0; // Clear the removed character
+                // Update the HTML input to match
+                _ = utils.js.setTextInputValueFromString(state.input_buffer[0..state.input_len]);
+            } else if (state.tags_input_active and state.tags_input_len > 0) {
+                state.tags_input_len -= 1;
+                state.tags_input_buffer[state.tags_input_len] = 0; // Clear the removed character
+                // Update the HTML input to match
+                _ = utils.js.setTextInputValueFromString(state.tags_input_buffer[0..state.tags_input_len]);
+            }
+        }
+
+        return; // Skip raylib input handling when HTML input is active for touch users
     }
 
-    // Fallback to raylib input handling (for desktop/native builds)
+    // Use raylib input handling for PC/mouse users or when HTML input is not active
     var key = rl.getCharPressed();
     while (key > 0) : (key = rl.getCharPressed()) {
         // SECURITY: Validate character before adding
@@ -281,7 +300,10 @@ pub fn handleTextInput(state: *types.GameState) void {
 /// Validate question input before submission
 pub fn validateQuestionInput(question: []const u8, tags: []const u8) bool {
     // Check minimum length
-    if (question.len < MIN_QUESTION_LENGTH) return false;
+    if (question.len < MIN_QUESTION_LENGTH) {
+        // DEBUG: console.log equivalent for debugging
+        return false;
+    }
 
     // Check maximum length
     if (question.len > MAX_QUESTION_LENGTH) return false;
@@ -290,14 +312,9 @@ pub fn validateQuestionInput(question: []const u8, tags: []const u8) bool {
     if (containsSuspiciousContent(question)) return false;
     if (containsSuspiciousContent(tags)) return false;
 
-    // Ensure question ends with a question mark or similar
+    // Ensure question has some content after trimming
     const trimmed_question = std.mem.trim(u8, question, " \t\n\r");
     if (trimmed_question.len == 0) return false;
-
-    const last_char = trimmed_question[trimmed_question.len - 1];
-    if (last_char != '?' and last_char != '.' and last_char != '!') {
-        return false; // Questions should end with punctuation
-    }
 
     // Check for repeated characters (spam detection)
     if (hasExcessiveRepeatedChars(trimmed_question)) return false;
@@ -309,7 +326,7 @@ pub fn validateQuestionInput(question: []const u8, tags: []const u8) bool {
             letter_count += 1;
         }
     }
-    if (letter_count < 5) return false; // Need at least 5 letters
+    if (letter_count < 3) return false; // Need at least 3 letters (more reasonable)
 
     // Tags validation
     if (tags.len == 0) return false; // Must have at least one tag

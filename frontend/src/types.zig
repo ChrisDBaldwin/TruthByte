@@ -148,6 +148,7 @@ pub const GameState = struct {
     fg_color: rl.Color = rl.Color{ .r = 255, .g = 245, .b = 230, .a = 255 },
     // Game/session state
     game_state: GameStateEnum = .Authenticating,
+    previous_state: GameStateEnum = .Authenticating, // Track previous state for back navigation
     orientation: Orientation = .Vertical,
     auth_initialized: bool = false,
     session: Session = Session{
@@ -249,7 +250,7 @@ pub const QuestionJSON = struct {
             .title = title_copy,
             .passage = passage_copy,
             .answer = self.answer,
-            .categories = &.{}, // TODO: Convert categories if needed
+            .categories = &.{},
             .difficulty = self.difficulty,
         };
     }

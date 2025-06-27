@@ -36,6 +36,7 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
     // --- Text Input Functions ---
     pub extern fn showTextInput(x: i32, y: i32, width: i32, height: i32, placeholder_ptr: ?[*]const u8, placeholder_len: usize) bool;
     pub extern fn hideTextInput() bool;
+    pub extern fn updateTextInputPosition(x: i32, y: i32, width: i32, height: i32) bool;
     pub extern fn getTextInputValue() ?*u8;
     pub extern fn getTextInputValueLength() usize;
     pub extern fn isTextInputFocused() bool;
@@ -232,6 +233,15 @@ pub const js = if (builtin.target.os.tag == .emscripten or builtin.target.os.tag
 
     pub fn hideTextInput() bool {
         std.debug.print("hideTextInput is not available in native build\n", .{});
+        return false;
+    }
+
+    pub fn updateTextInputPosition(x: i32, y: i32, width: i32, height: i32) bool {
+        _ = x;
+        _ = y;
+        _ = width;
+        _ = height;
+        std.debug.print("updateTextInputPosition is not available in native build\n", .{});
         return false;
     }
 

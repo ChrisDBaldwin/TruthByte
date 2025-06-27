@@ -123,16 +123,6 @@ def validate_question_input(question: str, categories: List[str], title: str = "
         errors.append("Question contains suspicious content")
     elif has_excessive_repeated_chars(question):
         errors.append("Question contains excessive repeated characters")
-    else:
-        # Check if question ends with proper punctuation
-        trimmed_question = question.strip()
-        if trimmed_question and trimmed_question[-1] not in ['?', '.', '!']:
-            errors.append("Question should end with proper punctuation")
-        
-        # Check for meaningful content (at least 5 letters)
-        letter_count = sum(1 for c in trimmed_question if c.isalpha())
-        if letter_count < 5:
-            errors.append("Question must contain meaningful text")
     
     # Categories validation
     if not categories or len(categories) == 0:

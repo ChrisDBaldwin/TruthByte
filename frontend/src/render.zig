@@ -755,16 +755,22 @@ pub fn drawFinishedScreen(state: *types.GameState, layout: UILayout) void {
 pub fn drawSubmittingScreen(state: *types.GameState, layout: UILayout) void {
     const constants = getResponsiveConstants();
 
-    // Title (positioned higher up)
-    const title_y = constants.margin + 20;
+    // Responsive title positioning - higher up on small screens to avoid overlap
+    const title_y = if (layout.screen_height < 700)
+        constants.margin + 5 // Very tight spacing for small screens
+    else
+        constants.margin + 20; // Normal spacing for larger screens
+
     const title_text = "Submit your own question!";
     const title_width = rl.measureText(title_text, constants.large_font);
     rl.drawText(title_text, @divTrunc((layout.screen_width - title_width), 2), title_y, constants.large_font, state.fg_color);
 
-    // Instructions
-    const instructions = "Fill out all fields below";
-    const instructions_width = rl.measureText(instructions, constants.small_font);
-    rl.drawText(instructions, @divTrunc((layout.screen_width - instructions_width), 2), title_y + constants.large_font + 10, constants.small_font, state.fg_color);
+    // Instructions - only show on larger screens to save space
+    if (layout.screen_height >= 600) {
+        const instructions = "Fill out all fields below";
+        const instructions_width = rl.measureText(instructions, constants.small_font);
+        rl.drawText(instructions, @divTrunc((layout.screen_width - instructions_width), 2), title_y + constants.large_font + 10, constants.small_font, state.fg_color);
+    }
 
     // Question label and input box
     const question_label = "Question:";
@@ -877,10 +883,11 @@ pub fn drawSubmitThanksScreen(state: *types.GameState, layout: UILayout) void {
     const message_y = title_y + title_font_size + types.SMALL_SPACING;
     rl.drawText(message_text, message_x, message_y, message_font_size, state.fg_color);
 
-    // Create custom button layout with proper spacing
+    // Create custom button layout with proper spacing and bigger buttons
     const button_spacing = types.ELEMENT_SPACING + 20; // Extra buffer space between buttons
-    const button_width = constants.confirm_w;
-    const button_height = constants.confirm_h;
+    // Make buttons bigger than normal confirm buttons for better touch targets
+    const button_width = constants.confirm_w * 1.4; // 40% bigger width
+    const button_height = constants.confirm_h * 1.3; // 30% bigger height
 
     // Calculate total height needed for both buttons with spacing
     const total_buttons_height = @as(i32, @intFromFloat(button_height * 2)) + button_spacing;
