@@ -56,6 +56,37 @@ TruthByte Game (WASM/Zig) ←→ API Gateway ←→ Lambda Functions ←→ Dyna
 - **Architecture Diagrams**: Visual representations where helpful
 - **Update Requirements**: Keep docs synchronized with code changes
 
+## Latest Updates
+
+### Daily Mode Feature (NEW)
+TruthByte now includes a comprehensive daily mode system with deterministic questions, streak tracking, and performance ranking.
+
+**Key Features:**
+- **Daily Challenge**: 10 deterministic questions, same for all users each day
+- **Streak System**: Daily streaks with performance requirements (≥70% for continuation)
+- **Ranking System**: Letter grades (S, A, B, C, D) based on percentage correct
+- **Progress Tracking**: Persistent daily completion status and historical performance
+
+**New Lambda Functions:**
+- `fetch_daily_questions` - Provides deterministic daily questions
+- `submit_daily_answers` - Processes daily submissions with score calculation
+
+**Frontend Updates:**
+- Mode selection interface (Arcade, Categories, Daily)
+- Daily review screen with score and rank display
+- Streak counters and progress indicators
+- Mobile-optimized daily mode UI
+
+**Database Schema:**
+- New Users table with daily progress tracking
+- Daily completion status and streak management
+- Historical performance data storage
+
+### Development Tools (NEW)
+- **Single Lambda Deployment**: `deploy-single-lambda.ps1` for rapid individual function deployment
+- **Enhanced Backend Functions**: Updated existing lambdas with improved category support
+- **Improved Error Handling**: Better error messages and debug information across all lambdas
+
 ---
 
 **Last Updated**: Current as of latest codebase state  

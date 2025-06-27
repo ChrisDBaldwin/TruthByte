@@ -36,7 +36,10 @@ def get_or_create_user(user_id: str) -> Dict[str, Any]:
             'last_active': current_time,
             'total_questions_answered': Decimal('0'),
             'correct_answers': Decimal('0'),
-            'tags': []  # Will track tags user has answered questions for
+            'daily_progress': {},  # Track daily challenge progress by date
+            'current_daily_streak': Decimal('0'),
+            'best_daily_streak': Decimal('0'),
+            'total_daily_games': Decimal('0')
         }
         
         users_table.put_item(Item=new_user)
@@ -46,7 +49,7 @@ def get_or_create_user(user_id: str) -> Dict[str, Any]:
         print(f"❌ Error in get_or_create_user: {str(e)}")
         raise
 
-def update_user_stats(user_id: str, question_id: str, answer: bool, correct_answer: bool, question_tags: list) -> Dict[str, Any]:
+def update_user_stats(user_id: str, question_id: str, answer: bool, correct_answer: bool) -> Dict[str, Any]:
     """
     Update user statistics based on their answer.
     
@@ -55,13 +58,12 @@ def update_user_stats(user_id: str, question_id: str, answer: bool, correct_answ
         question_id: Question ID that was answered
         answer: User's answer (True/False)
         correct_answer: The correct answer
-        question_tags: List of tags for the question
         
     Returns:
         Dict containing updated user data
     """
     try:
-        current_time = datetime.utcnow().isoformat()
+        current_time = datetime.now(datetime.UTC)
         is_correct = answer == correct_answer
         
         # Use update_item with atomic operations
@@ -74,19 +76,6 @@ def update_user_stats(user_id: str, question_id: str, answer: bool, correct_answ
         # If answer is correct, increment trust_score and correct_answers
         if is_correct:
             update_expression += ", trust_score = trust_score + :one, correct_answers = correct_answers + :one"
-        
-        # Update tags if new ones are encountered
-        if question_tags:
-            # Get current user to check existing tags
-            user = get_or_create_user(user_id)
-            existing_tags = set(user.get('tags', []))
-            new_tags = set(question_tags)
-            
-            # Add any new tags
-            updated_tags = list(existing_tags.union(new_tags))
-            if updated_tags != list(existing_tags):
-                update_expression += ", tags = :tags"
-                expression_values[':tags'] = updated_tags
         
         response = users_table.update_item(
             Key={'user_id': user_id},
@@ -125,4 +114,55 @@ class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
-        return super(DecimalEncoder, self).default(obj) 
+        return super(DecimalEncoder, self).default(obj)
+
+def migrate_user_to_daily_progress(user_id: str) -> Dict[str, Any]:
+    """
+    Migrate an existing user to have daily progress fields and remove deprecated tags.
+    This is optional since the code already handles missing fields gracefully.
+    
+    Args:
+        user_id: UUID string for the user
+        
+    Returns:
+        Dict containing updated user data
+    """
+    try:
+        # Update user record to add daily progress fields and remove tags if they exist
+        response = users_table.update_item(
+            Key={'user_id': user_id},
+            UpdateExpression="""
+                SET daily_progress = if_not_exists(daily_progress, :empty_dict),
+                    current_daily_streak = if_not_exists(current_daily_streak, :zero),
+                    best_daily_streak = if_not_exists(best_daily_streak, :zero),
+                    total_daily_games = if_not_exists(total_daily_games, :zero)
+                REMOVE tags
+            """,
+            ExpressionAttributeValues={
+                ':empty_dict': {},
+                ':zero': Decimal('0')
+            },
+            ReturnValues='ALL_NEW'
+        )
+        return response['Attributes']
+    except Exception as e:
+        # If REMOVE fails (tags doesn't exist), try without it
+        try:
+            response = users_table.update_item(
+                Key={'user_id': user_id},
+                UpdateExpression="""
+                    SET daily_progress = if_not_exists(daily_progress, :empty_dict),
+                        current_daily_streak = if_not_exists(current_daily_streak, :zero),
+                        best_daily_streak = if_not_exists(best_daily_streak, :zero),
+                        total_daily_games = if_not_exists(total_daily_games, :zero)
+                """,
+                ExpressionAttributeValues={
+                    ':empty_dict': {},
+                    ':zero': Decimal('0')
+                },
+                ReturnValues='ALL_NEW'
+            )
+            return response['Attributes']
+        except Exception as e2:
+            print(f"❌ Error in migrate_user_to_daily_progress: {str(e2)}")
+            raise 

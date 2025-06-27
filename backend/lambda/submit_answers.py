@@ -214,8 +214,7 @@ def lambda_handler(event, context):
                         user_id,
                         stats_update['question_id'],
                         stats_update['answer'],
-                        stats_update['correct_answer'],
-                        stats_update['question_tags']
+                        stats_update['correct_answer']
                     )
             except Exception as e:
                 print(f"❌ Error updating user stats: {str(e)}")

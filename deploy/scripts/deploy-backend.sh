@@ -109,6 +109,11 @@ if [ "$SKIP_PACKAGING" = false ]; then
         "get-token:../../backend/lambda/get_token.py"
         "auth-ping:../../backend/lambda/auth_ping.py"
         "get-user:../../backend/lambda/get_user.py"
+        "get-categories:../../backend/lambda/get_categories.py"
+        "get-user-submissions:../../backend/lambda/get_user_submissions.py"
+        "approve-question:../../backend/lambda/approve_question.py"
+        "fetch-daily-questions:../../backend/lambda/fetch_daily_questions.py"
+        "submit-daily-answers:../../backend/lambda/submit_daily_answers.py"
     )   
 
     for func in "${FUNCTIONS[@]}"; do
@@ -128,7 +133,7 @@ if [ "$SKIP_PACKAGING" = false ]; then
         cp "$path" "$TEMP_DIR"
         
         # Also copy the shared module for auth functions
-        if [[ "$name" == "get-token" || "$name" == "auth-ping" || "$name" == "fetch-questions" || "$name" == "submit-answers" || "$name" == "propose-question" || "$name" == "get-user" ]]; then
+        if [[ "$name" == "get-token" || "$name" == "auth-ping" || "$name" == "fetch-questions" || "$name" == "submit-answers" || "$name" == "propose-question" || "$name" == "get-user" || "$name" == "get-categories" || "$name" == "get-user-submissions" || "$name" == "approve-question" || "$name" == "fetch-daily-questions" || "$name" == "submit-daily-answers" ]]; then
             echo "Copying shared auth utilities..."
             cp -r "../../backend/shared" "$TEMP_DIR/"
         fi
@@ -194,6 +199,11 @@ PROPOSE_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRON
 GET_TOKEN_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetTokenFunctionArn`].OutputValue' --output text)
 AUTH_PING_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`AuthPingFunctionArn`].OutputValue' --output text)
 GET_USER_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserFunctionArn`].OutputValue' --output text)
+GET_CATEGORIES_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetCategoriesFunctionArn`].OutputValue' --output text)
+GET_USER_SUBMISSIONS_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserSubmissionsFunctionArn`].OutputValue' --output text)
+APPROVE_QUESTION_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`ApproveQuestionFunctionArn`].OutputValue' --output text)
+FETCH_DAILY_QUESTIONS_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`FetchDailyQuestionsFunctionArn`].OutputValue' --output text)
+SUBMIT_DAILY_ANSWERS_FUNCTION_ARN=$(aws cloudformation describe-stacks --stack-name "$ENVIRONMENT-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`SubmitDailyAnswersFunctionArn`].OutputValue' --output text)
 
 # Deploy API Gateway with custom domain
 echo "Deploying API Gateway with custom domain..."
@@ -208,6 +218,11 @@ aws cloudformation deploy \
         GetTokenFunctionArn="$GET_TOKEN_FUNCTION_ARN" \
         AuthPingFunctionArn="$AUTH_PING_FUNCTION_ARN" \
         GetUserFunctionArn="$GET_USER_FUNCTION_ARN" \
+        GetCategoriesFunctionArn="$GET_CATEGORIES_FUNCTION_ARN" \
+        GetUserSubmissionsFunctionArn="$GET_USER_SUBMISSIONS_FUNCTION_ARN" \
+        ApproveQuestionFunctionArn="$APPROVE_QUESTION_FUNCTION_ARN" \
+        FetchDailyQuestionsFunctionArn="$FETCH_DAILY_QUESTIONS_FUNCTION_ARN" \
+        SubmitDailyAnswersFunctionArn="$SUBMIT_DAILY_ANSWERS_FUNCTION_ARN" \
         ApiCertificateArn="$API_CERTIFICATE_ARN"
 echo "API Gateway deployed"
 

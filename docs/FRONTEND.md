@@ -13,6 +13,11 @@ The frontend is built in **Zig** and compiles to **WebAssembly (WASM)** for web 
 - **Custom Input System**: Unified mouse/touch/keyboard handling
 - **Modular Architecture**: Separated concerns for easy maintenance
 
+### Game Modes
+- **Arcade Mode**: Classic 7-question sessions with category and difficulty selection
+- **Categories Mode**: Browse and play questions from specific categories
+- **Daily Mode**: **NEW** Daily challenge with 10 deterministic questions, streak tracking, and ranking system
+
 ### Build Targets
 ```
 Zig Source Code
@@ -63,6 +68,7 @@ pub export fn draw(state: *types.GameState) callconv(.C) void;
 - Exported API functions for WASM/native
 - High-level game state coordination
 - Module orchestration
+- **Game mode management** (Arcade, Categories, Daily)
 
 #### `types.zig` - Type Definitions
 **Purpose**: All type definitions, constants, and static data
@@ -83,6 +89,9 @@ pub const BUTTON_GAP = 40;
 - UI layout constants and dimensions
 - Question pool and JSON response types
 - Color definitions and palette types
+- **Game mode enums** (`GameMode`, `GameStateEnum`)
+- **Daily mode structures** (`DailyReview`, streak tracking data)
+- **Category selection types** (`Category` struct with counts)
 
 #### `utils.zig` - Utilities & Interop
 **Purpose**: JavaScript interop and utility functions
@@ -106,6 +115,8 @@ pub fn initPalettes(state: *types.GameState) void;
 - Color manipulation and palette generation
 - Canvas size utilities
 - Game logic helpers
+- **Daily mode utilities** (date formatting, score calculations)
+- **Cross-platform compatibility** (native vs. WASM function stubs)
 
 #### `input.zig` - Input Handling & Security
 **Purpose**: Unified input system for mouse and touch with comprehensive security validation
@@ -158,6 +169,9 @@ export fn on_questions_received(success: i32, data_ptr: [*]const u8, data_len: u
 - API callback functions
 - JSON parsing and session initialization
 - Error handling and fallback logic
+- **Daily mode API integration** (`fetch_daily_questions`, `submit_daily_answers`)
+- **User data management** (streak tracking, daily progress)
+- **Category management** (fetching available categories with counts)
 
 #### `render.zig` - UI Rendering
 **Purpose**: Complete UI rendering system
@@ -180,6 +194,9 @@ pub fn draw(state: *types.GameState) void;
 - Automatic layout calculation
 - Responsive UI positioning
 - Easy to modify for UI redesigns
+- **Mode selection screen** with three game mode buttons
+- **Daily mode review screen** with score, rank, and streak display
+- **Category browsing interface** with category counts and difficulty filters
 
 #### `user.zig` - User Identity Management
 **Purpose**: Persistent user identity and localStorage integration
@@ -198,6 +215,35 @@ fn generateUUID(prng: *std.Random.DefaultPrng) [36]u8;
 - **Cryptographically secure UUID v4 generation** using Zig's PRNG
 - **Persistent storage** via localStorage with minimal JavaScript interface
 - **Type-safe API** for user ID management across the application
+
+## Daily Mode Features (NEW)
+
+The frontend now includes a comprehensive daily mode system with the following features:
+
+### **Game Flow**
+1. **Mode Selection**: Choose between Arcade, Categories, or Daily mode
+2. **Daily Challenge**: 10 deterministic questions, same for all users each day
+3. **Score Calculation**: Real-time scoring with letter grades (S, A, B, C, D)
+4. **Streak Tracking**: Daily streaks with performance requirements (≥70% for continuation)
+5. **Progress Review**: Detailed results screen with score breakdown and rank display
+
+### **Daily Mode UI Components**
+- **Mode Selection Screen**: Three-button interface for game mode selection
+- **Daily Review Screen**: Score display with letter rank, correct/total counts, and streak information
+- **Progress Indicators**: Visual representation of daily completion status
+- **Streak Display**: Current and best streak counters with continuation status
+
+### **Technical Implementation**
+- **Deterministic Questions**: Same 10 questions for all users on a given date
+- **Client-side Score Calculation**: Real-time scoring feedback during gameplay  
+- **Persistent State**: Daily completion status stored and validated server-side
+- **Cross-platform Compatibility**: Full mobile and desktop support
+
+### **User Experience Features**
+- **One Daily Challenge**: Prevents multiple attempts per day
+- **Performance Ranking**: Letter grades based on percentage correct
+- **Streak Motivation**: Visual streak counters encourage daily participation
+- **Immediate Feedback**: Instant score and rank display upon completion
 - **Cross-platform support** (web and native builds)
 - **Automatic initialization** during game startup
 

@@ -62,7 +62,7 @@ fn submitQuestion(state: *types.GameState) void {
             .answer = state.submit_answer_selected.?,
             .title = "",
             .passage = "",
-            .tags = tags_list.items,
+            .categories = tags_list.items,
         };
 
         const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch {
@@ -136,7 +136,7 @@ fn submitQuestion(state: *types.GameState) void {
         .answer = state.submit_answer_selected.?,
         .title = "", // Optional - empty for now
         .passage = "", // Optional - empty for now
-        .tags = tags_list.items,
+        .categories = tags_list.items,
     };
 
     // Try to stringify with error handling
@@ -258,7 +258,26 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
         if (!input_event.pressed) return;
 
         const pos = input_event.position;
-        if (rl.checkCollisionPointRec(pos, layout.submit_btn) and render.shouldShowSubmitButton(state)) {
+
+        // COLOR button - handle first so it works in all states where sidebar is visible
+        if (rl.checkCollisionPointRec(pos, layout.randomize_btn)) {
+            // Check if sidebar should be visible (same logic as in render.zig)
+            const canvas_size = utils.get_canvas_size();
+            const current_aspect_ratio = @as(f32, @floatFromInt(canvas_size.w)) / @as(f32, @floatFromInt(canvas_size.h));
+            const is_horizontal = current_aspect_ratio > 1.2;
+
+            const should_show_sidebar = switch (state.game_state) {
+                .Loading, .Authenticating => false,
+                .Answering, .Finished, .Submitting, .SubmitThanks => true,
+                .ModeSelection, .CategorySelection, .DailyReview => is_horizontal,
+            };
+
+            if (should_show_sidebar) {
+                const new_pal = utils.randomPalette(state);
+                state.bg_color = new_pal.bg;
+                state.fg_color = new_pal.fg;
+            }
+        } else if (rl.checkCollisionPointRec(pos, layout.submit_btn) and render.shouldShowSubmitButton(state)) {
             state.game_state = .Submitting;
             // Initialize submit form state cleanly
             state.input_active = false;
@@ -272,23 +291,44 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             // NEW GAME button - only respond if not in submit mode
             const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
             if (!hide_side_buttons) {
-                api.startSession(state);
+                api.startModeSelection(state);
             }
-        } else if (rl.checkCollisionPointRec(pos, layout.categories_btn)) {
-            // CATEGORIES button - start category selection
-            const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
-            if (!hide_side_buttons) {
-                api.startCategorySelection(state);
+            // Categories button removed - now available through mode selection TODO: add back or remove
+            // } else if (rl.checkCollisionPointRec(pos, layout.categories_btn)) {
+            //     // CATEGORIES button - start category selection
+            //     const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
+            //     if (!hide_side_buttons) {
+            //         api.startCategorySelection(state);
+            //     }
+        } else if (state.game_state == .ModeSelection) {
+            // Handle mode selection interactions
+            if (rl.checkCollisionPointRec(pos, layout.arcade_mode_btn)) {
+                api.startArcadeMode(state);
+            } else if (rl.checkCollisionPointRec(pos, layout.categories_mode_btn)) {
+                api.startCategoriesMode(state);
+            } else if (rl.checkCollisionPointRec(pos, layout.daily_mode_btn)) {
+                api.startDailyMode(state);
+            }
+        } else if (state.game_state == .DailyReview) {
+            // Handle DailyReview state - check for continue button
+            // Calculate the same button position as in drawDailyReviewScreen
+            const button_y = layout.question_y + 200; // 40px buffer below last text
+            const continue_rect = rl.Rectangle{
+                .x = @floatFromInt(@divTrunc(layout.screen_width - 200, 2)),
+                .y = @floatFromInt(button_y),
+                .width = 200,
+                .height = 40,
+            };
+
+            if (rl.checkCollisionPointRec(pos, continue_rect)) {
+                // Continue button clicked - go back to mode selection
+                api.startModeSelection(state);
             }
         } else if (state.game_state == .CategorySelection) {
             // Handle category selection interactions
             if (rl.checkCollisionPointRec(pos, layout.back_btn)) {
-                // Back button - return to game
-                if (state.session.finished) {
-                    state.game_state = .Finished;
-                } else {
-                    state.game_state = .Answering;
-                }
+                // Back button - return to mode selection (not to a game session)
+                api.startModeSelection(state);
             } else {
                 // Check if any category was clicked
                 for (0..state.categories_count) |i| {
@@ -489,29 +529,32 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             r.answer = state.response.answer;
             r.duration = @as(f64, @floatFromInt(now - r.start_time));
             if (state.response.answer == state.session.questions[state.session.current].answer) state.session.correct += 1;
+
+            // Check if this was the last question BEFORE incrementing
+            const was_last_question = (state.session.current + 1) >= state.session.total_questions;
             state.session.current += 1;
-            if (state.session.current >= 7) {
+
+            if (was_last_question) {
                 state.session.finished = true;
-                state.game_state = .Finished;
                 state.sessions_completed += 1; // Track completed sessions
                 state.user_session.trust = utils.calcTrustScore(state);
                 state.user_trust = state.user_session.trust; // Update user trust for UI gating
 
-                api.submitResponseBatch(&state.user_session);
+                // Handle different completion flows based on mode
+                if (state.session.mode == .Daily) {
+                    // Submit daily answers
+                    api.submitDailyAnswers(state);
+                } else {
+                    // Regular arcade/categories mode
+                    state.game_state = .Finished;
+                    api.submitResponseBatch(&state.user_session);
+                }
             }
             state.response.answer = null;
             state.selected = null;
         } else if (state.game_state == .Finished and rl.checkCollisionPointRec(pos, layout.continue_rect)) {
-            // Continue button clicked - start a new session
-            api.startSession(state);
-        } else if (rl.checkCollisionPointRec(pos, layout.randomize_btn)) {
-            // COLOR button - only respond if not in submit mode
-            const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
-            if (!hide_side_buttons) {
-                const new_pal = utils.randomPalette(state);
-                state.bg_color = new_pal.bg;
-                state.fg_color = new_pal.fg;
-            }
+            // Continue button clicked - go back to mode selection instead of immediately starting session
+            api.startModeSelection(state);
         } else {
             // Clicked outside any interactive elements
             if (state.game_state == .Submitting) {
@@ -531,7 +574,7 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
     input.handleTextInput(state);
 
     // Per-question timer start
-    if (state.game_state == .Answering and state.session.current < 7 and utils.currentResponse(state).start_time == 0) {
+    if (state.game_state == .Answering and state.session.current < state.session.total_questions and utils.currentResponse(state).start_time == 0) {
         utils.currentResponse(state).start_time = std.time.timestamp();
     }
 }

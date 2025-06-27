@@ -30,6 +30,12 @@ Parameters:
   GetCategoriesFunctionArn:
     Type: String
     Description: ARN of the get categories Lambda function
+  FetchDailyQuestionsFunctionArn:
+    Type: String
+    Description: ARN of the fetch daily questions Lambda function
+  SubmitDailyAnswersFunctionArn:
+    Type: String
+    Description: ARN of the submit daily answers Lambda function
   CustomDomainName:
     Type: String
     Default: api.truthbyte.voidtalker.com
@@ -364,6 +370,94 @@ Resources:
             method.response.header.Access-Control-Allow-Origin: true
             method.response.header.Access-Control-Allow-Methods: true
 
+  # Fetch Daily Questions Endpoint
+  FetchDailyQuestionsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResource
+      PathPart: fetch-daily-questions
+
+  FetchDailyQuestionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref FetchDailyQuestionsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FetchDailyQuestionsFunctionArn}/invocations
+
+  FetchDailyQuestionsCorsOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref FetchDailyQuestionsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  # Submit Daily Answers Endpoint
+  SubmitDailyAnswersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResource
+      PathPart: submit-daily-answers
+
+  SubmitDailyAnswersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SubmitDailyAnswersResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SubmitDailyAnswersFunctionArn}/invocations
+
+  SubmitDailyAnswersCorsOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SubmitDailyAnswersResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID'"
+              method.response.header.Access-Control-Allow-Origin: "'https://truthbyte.voidtalker.com'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+
   # Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -382,6 +476,10 @@ Resources:
       - CategoriesCorsOptions
       - UserMethod
       - UserCorsOptions
+      - FetchDailyQuestionsMethod
+      - FetchDailyQuestionsCorsOptions
+      - SubmitDailyAnswersMethod
+      - SubmitDailyAnswersCorsOptions
     Properties:
       RestApiId: !Ref ApiGateway
 
@@ -446,6 +544,22 @@ Resources:
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref GetUserFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  FetchDailyQuestionsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FetchDailyQuestionsFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
+
+  SubmitDailyAnswersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SubmitDailyAnswersFunctionArn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
 

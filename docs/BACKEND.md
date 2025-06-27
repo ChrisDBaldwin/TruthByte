@@ -18,6 +18,11 @@ A scalable, tag-based backend system for TruthByte built on AWS Lambda and Dynam
 - `get_user` - Retrieves user profile and statistics
 - `get_token` - Issues JWT authentication tokens
 - `auth_ping` - Validates JWT tokens (debug endpoint)
+- `fetch_daily_questions` - **NEW** Provides deterministic daily questions for daily mode
+- `submit_daily_answers` - **NEW** Processes daily mode submissions with score calculation and streak tracking
+- `get_categories` - Retrieves available question categories with counts
+- `get_user_submissions` - Retrieves user's submitted questions for review
+- `approve_question` - Approves user-submitted questions for inclusion in question pool
 
 ### Security Features
 
@@ -44,6 +49,11 @@ A scalable, tag-based backend system for TruthByte built on AWS Lambda and Dynam
   - `get_user.py` - User profile and statistics retrieval
   - `get_token.py` - JWT token generation for authentication
   - `auth_ping.py` - JWT token validation endpoint
+  - `fetch_daily_questions.py` - **NEW** Deterministic daily question selection
+  - `submit_daily_answers.py` - **NEW** Daily mode answer processing and streak management
+  - `get_categories.py` - Category listing with question counts
+  - `get_user_submissions.py` - User-submitted question retrieval
+  - `approve_question.py` - Question approval workflow
 - `shared/`: Shared code modules
   - `db.py` - DynamoDB client and operations
   - `models.py` - Pydantic data models
@@ -66,6 +76,15 @@ A scalable, tag-based backend system for TruthByte built on AWS Lambda and Dynam
 - **Answers Table**: User responses and trust scoring
 - **Sessions Table**: User session tracking with IP hash indexing
 - **Submitted Questions Table**: User-proposed questions awaiting review
+- **Users Table**: User profiles, daily progress, and streak tracking
+
+### **Daily Mode Features**
+- **Deterministic Question Selection**: Same 10 questions for all users on a given date
+- **Date-based Seeding**: Uses cryptographic hash to ensure consistent daily questions
+- **Progress Tracking**: User daily completion status and historical performance
+- **Streak System**: Current and best daily streaks with performance requirements
+- **Score Ranking**: Letter grades (S, A, B, C, D) based on percentage correct
+- **Difficulty Filtering**: Excludes hardest questions (difficulty 5) from daily challenges
 
 ## Setup & Dependencies
 

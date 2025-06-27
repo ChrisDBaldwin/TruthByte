@@ -78,7 +78,9 @@ if (-not $SkipPackaging) {
         @{name="get-user"; path="../../backend/lambda/get_user.py"},
         @{name="get-categories"; path="../../backend/lambda/get_categories.py"},
         @{name="get-user-submissions"; path="../../backend/lambda/get_user_submissions.py"},
-        @{name="approve-question"; path="../../backend/lambda/approve_question.py"}
+        @{name="approve-question"; path="../../backend/lambda/approve_question.py"},
+        @{name="fetch-daily-questions"; path="../../backend/lambda/fetch_daily_questions.py"},
+        @{name="submit-daily-answers"; path="../../backend/lambda/submit_daily_answers.py"}
     )
 
     foreach ($func in $functions) {
@@ -97,7 +99,7 @@ if (-not $SkipPackaging) {
         Copy-Item $func.path $tempDir
         
         # Also copy the shared module for auth functions
-        if ($func.name -in @("get-token", "auth-ping", "fetch-questions", "submit-answers", "propose-question", "get-user", "get-categories", "get-user-submissions", "approve-question")) {
+        if ($func.name -in @("get-token", "auth-ping", "fetch-questions", "submit-answers", "propose-question", "get-user", "get-categories", "get-user-submissions", "approve-question", "fetch-daily-questions", "submit-daily-answers")) {
             Write-Host "Copying shared auth utilities..."
             # Copy shared files directly to temp directory (not as subdirectory)
             Copy-Item "../../backend/shared/*" $tempDir -Recurse -Force
@@ -184,6 +186,8 @@ $getUserFunctionArn = aws cloudformation describe-stacks --stack-name "$Environm
 $getCategoriesFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetCategoriesFunctionArn`].OutputValue' --output text
 $getUserSubmissionsFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`GetUserSubmissionsFunctionArn`].OutputValue' --output text
 $approveQuestionFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`ApproveQuestionFunctionArn`].OutputValue' --output text
+$fetchDailyQuestionsFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`FetchDailyQuestionsFunctionArn`].OutputValue' --output text
+$submitDailyAnswersFunctionArn = aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-lambdas" --query 'Stacks[0].Outputs[?OutputKey==`SubmitDailyAnswersFunctionArn`].OutputValue' --output text
 
 # Deploy API Gateway with custom domain
 Write-Host "Deploying API Gateway with custom domain..."
@@ -201,7 +205,9 @@ aws cloudformation deploy `
         GetCategoriesFunctionArn="$getCategoriesFunctionArn" `
         ApiCertificateArn="$ApiCertificateArn" `
         GetUserSubmissionsFunctionArn="$getUserSubmissionsFunctionArn" `
-        ApproveQuestionFunctionArn="$approveQuestionFunctionArn"
+        ApproveQuestionFunctionArn="$approveQuestionFunctionArn" `
+        FetchDailyQuestionsFunctionArn="$fetchDailyQuestionsFunctionArn" `
+        SubmitDailyAnswersFunctionArn="$submitDailyAnswersFunctionArn"
 Write-Host "API Gateway deployed"
 Write-Host "Backend deployment complete!"
 Write-Host "API Endpoint: $(aws cloudformation describe-stacks --stack-name "$Environment-truthbyte-api" --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)"

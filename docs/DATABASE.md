@@ -172,6 +172,52 @@ Billing: Pay-per-request
 - **Approval Workflow**: Update status and promote to main table
 - **User Tracking**: Query submissions by submitter
 
+### 7. Users Table (NEW - Daily Mode)
+**Table Name**: `{environment}-truthbyte-users`
+
+```
+Partition Key: user_id (String)
+Billing: Pay-per-request
+```
+
+**Attributes:**
+```json
+{
+  "user_id": "12345678-1234-4xxx-yxxx-xxxxxxxxxxxx", // UUID v4 user identifier
+  "created_at": 1710000000,                          // User creation timestamp
+  "total_games": 42,                                 // Total arcade games played
+  "trust_score": 0.85,                               // Current trust score
+  
+  // Daily Mode Fields (NEW)
+  "current_daily_streak": 7,                         // Current consecutive daily completions
+  "best_daily_streak": 15,                           // Highest streak achieved
+  "total_daily_games": 23,                           // Total daily challenges completed
+  "daily_progress": {                                // Daily completion tracking
+    "2024-01-15": {
+      "completed": true,
+      "score": 80.0,                                 // Percentage score
+      "rank": "A",                                   // Letter grade (S, A, B, C, D)
+      "correct_count": 8,                            // Questions answered correctly
+      "total_questions": 10,                         // Total questions in challenge
+      "answers": [...],                              // Individual answer records
+      "completed_at": 1705324800                     // Completion timestamp
+    },
+    "2024-01-16": {
+      "completed": false,
+      "score": 0,
+      "answers": [],
+      "completed_at": null
+    }
+  }
+}
+```
+
+**Usage Pattern:**
+- **User Profile**: Get complete user data including daily progress
+- **Streak Calculation**: Determine current and best streaks
+- **Daily Progress**: Track completion status for specific dates
+- **Historical Performance**: Analyze user's daily challenge history
+
 ## Query Patterns
 
 ### Efficient Question Fetching
@@ -217,6 +263,93 @@ user_answers = answers_table.query(
     KeyConditionExpression=Key('user_id').eq(user_id)
 )
 # Trust scoring logic...
+```
+
+### Daily Mode Queries (NEW)
+
+```python
+# Get deterministic daily questions
+def get_daily_questions(date_str):
+    # 1. Get all questions with difficulty filter
+    response = questions_table.scan(
+        FilterExpression=Attr('difficulty').between(1, 4),
+        Limit=500
+    )
+    all_questions = response['Items']
+    
+    # 2. Deterministic selection using date-based seed
+    import hashlib
+    import random
+    
+    seed = int.from_bytes(
+        hashlib.sha256(f"truthbyte-daily-{date_str}".encode()).digest()[:8], 
+        byteorder='big'
+    )
+    rng = random.Random(seed)
+    selected_questions = rng.sample(all_questions, 10)
+    
+    return selected_questions
+
+# Submit daily answers with score calculation
+def submit_daily_answers(user_id, answers, date_str):
+    # 1. Verify questions and calculate score
+    question_ids = [answer['question_id'] for answer in answers]
+    questions = batch_get_questions(question_ids)
+    
+    correct_count = sum(
+        1 for answer in answers 
+        if answer['answer'] == questions[answer['question_id']]['answer']
+    )
+    
+    score_percentage = (correct_count / len(answers)) * 100
+    rank = calculate_rank(score_percentage)  # S, A, B, C, D
+    
+    # 2. Update user's daily progress
+    users_table.update_item(
+        Key={'user_id': user_id},
+        UpdateExpression="""
+            SET daily_progress.#date = :progress,
+                current_daily_streak = :new_streak,
+                best_daily_streak = if_not_exists(best_daily_streak, :zero),
+                total_daily_games = total_daily_games + :one
+        """,
+        ExpressionAttributeNames={'#date': date_str},
+        ExpressionAttributeValues={
+            ':progress': {
+                'completed': True,
+                'score': Decimal(str(score_percentage)),
+                'rank': rank,
+                'correct_count': correct_count,
+                'total_questions': len(answers),
+                'answers': answers,
+                'completed_at': int(time.time())
+            },
+            ':new_streak': calculate_new_streak(user_id, score_percentage >= 70),
+            ':zero': 0,
+            ':one': 1
+        }
+    )
+
+# Calculate user's current streak
+def calculate_user_streak(user_id):
+    user_data = users_table.get_item(Key={'user_id': user_id})['Item']
+    daily_progress = user_data.get('daily_progress', {})
+    
+    current_streak = 0
+    dates = sorted(daily_progress.keys(), reverse=True)
+    
+    for date_str in dates:
+        day_data = daily_progress[date_str]
+        if day_data.get('completed') and day_data.get('score', 0) >= 70:
+            current_streak += 1
+        else:
+            break
+    
+    return {
+        'current_streak': current_streak,
+        'best_streak': user_data.get('best_daily_streak', 0),
+        'streak_eligible': True
+    }
 ```
 
 ## Data Management

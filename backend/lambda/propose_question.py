@@ -256,7 +256,7 @@ def lambda_handler(event, context):
     - answer: Boolean true/false answer
     - title: Optional context title
     - passage: Optional background passage
-    - tags: List of category tags
+    - categories: List of categories (formerly tags)
     
     Requires JWT authentication via Authorization: Bearer <token> header.
     
@@ -366,7 +366,7 @@ def lambda_handler(event, context):
         
         # Validate required fields for TruthByte format
         required_fields = {"question", "answer"}
-        categories_field = body.get("categories") or body.get("tags")  # Support both for backwards compatibility
+        categories_field = body.get("categories")  # Support both for backwards compatibility
         
         if not all(field in body for field in required_fields) or not categories_field:
             return {

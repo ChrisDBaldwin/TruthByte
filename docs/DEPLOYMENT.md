@@ -14,7 +14,8 @@ deploy/
 │   ├── deploy-backend.sh         # Backend-only deployment (Bash)
 │   ├── deploy-backend.ps1        # Backend-only deployment (PowerShell)
 │   ├── deploy-frontend.sh        # Frontend-only deployment (Bash)
-│   └── deploy-frontend.ps1       # Frontend-only deployment (PowerShell)
+│   ├── deploy-frontend.ps1       # Frontend-only deployment (PowerShell)
+│   └── deploy-single-lambda.ps1  # **NEW** Single lambda deployment (PowerShell)
 ├── artifacts/                    # Generated deployment files (gitignored)
 │   └── frontend/                 # Built WASM, JS, HTML files
 └── infra/
@@ -304,3 +305,53 @@ Questions should be in JSONL format with these fields:
 - **Sub-second Queries**: Fast response times regardless of dataset size  
 - **Predictable Costs**: Consistent, low-cost operation
 - **High Throughput**: Supports concurrent requests without performance degradation 
+
+## Single Lambda Deployment (NEW)
+
+For rapid development and testing, you can now deploy individual Lambda functions without going through the full backend deployment process.
+
+### Quick Lambda Deploy
+
+```powershell
+# Deploy a single Lambda function
+.\scripts\deploy-single-lambda.ps1 -Environment dev -FunctionName fetch-daily-questions
+
+# Deploy modified function for testing
+.\scripts\deploy-single-lambda.ps1 -Environment dev -FunctionName submit-daily-answers
+```
+
+### Available Functions
+
+All Lambda functions can be deployed individually:
+- `fetch-questions` - Question retrieval
+- `submit-answers` - Answer processing
+- `propose-question` - Question submission
+- `get-token` - Authentication
+- `auth-ping` - Token validation
+- `get-user` - User data retrieval
+- `get-categories` - Category listing
+- `get-user-submissions` - User submissions
+- `approve-question` - Question approval
+- `fetch-daily-questions` - **NEW** Daily question retrieval
+- `submit-daily-answers` - **NEW** Daily answer processing
+
+### How Single Lambda Deployment Works
+
+1. **Dependency Management**: Automatically installs Python dependencies for the specific function
+2. **Shared Code Inclusion**: Includes shared auth utilities for functions that need them
+3. **Fast Packaging**: Uses 7-Zip if available for faster compression, falls back to PowerShell
+4. **Direct Upload**: Uploads to S3 and updates Lambda function code directly
+5. **Immediate Availability**: Function is available immediately after deployment
+
+### Benefits
+
+- **Fast Iteration**: Deploy single functions in seconds vs. full backend deployment
+- **Selective Updates**: Only update the functions you've changed
+- **Development Workflow**: Perfect for testing individual Lambda changes
+- **Cost Efficient**: Only redeploys what's needed
+
+### Requirements
+
+- Backend infrastructure must already be deployed (creates necessary S3 buckets and Lambda functions)
+- AWS CLI configured with appropriate permissions
+- Python 3.13+ with pip for dependency installation 
