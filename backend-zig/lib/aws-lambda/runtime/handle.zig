@@ -186,20 +186,6 @@ pub const Stream = struct {
         self.stream.close(null) catch return self.runtimeFailiure();
     }
 
-    // TODO: Further investigate why Lambda’s Runtime API seems to ignore the trailer headers.
-    // /// End the response stream with a trailing HTTP error.
-    // pub fn closeWithError(self: Stream, err: anyerror, message: []const u8) Error!void {
-    //     if (!self.isActive()) return error.ClosedStream;
-    //
-    //     self.context.state = .end;
-    //     self.stream.close(.{
-    //         .type = err,
-    //         .message = message,
-    //     }) catch {
-    //         return self.runtimeFailiure();
-    //     };
-    // }
-
     fn isActive(self: Stream) bool {
         return self.context.state == .active and self.context.fail_source != .runtime;
     }

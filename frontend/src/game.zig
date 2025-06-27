@@ -9,24 +9,28 @@ const api = @import("api.zig");
 const render = @import("render.zig");
 const user = @import("user.zig");
 
+// Global state reference for callbacks
+var g_state: ?*types.GameState = null;
+
 // --- Helper Functions ---
 
 fn submitQuestion(state: *types.GameState) void {
+    // Store state reference for callback
+    g_state = state;
+
     // Get the question text and tags (ensure null termination)
     const question_text = state.input_buffer[0..state.input_len];
     const tags_text = state.tags_input_buffer[0..state.tags_input_len];
 
     // SECURITY: Validate input before processing
-    if (!input.validateQuestionInput(question_text, tags_text)) {
-        // Invalid input - clear and return to prevent submission
-        state.input_len = 0;
-        state.input_buffer[0] = 0;
-        state.tags_input_len = 0;
-        state.tags_input_buffer[0] = 0;
-        state.input_active = false;
-        state.tags_input_active = false;
-        state.submit_answer_selected = null;
-        return;
+    const is_valid = input.validateQuestionInput(question_text, tags_text);
+    if (!is_valid) {
+        // Minimum length and non-empty tags
+        if (question_text.len < 5 or tags_text.len == 0) {
+            // Invalid input - don't clear fields, just return to allow user to fix
+            return;
+        }
+        // If basic requirements are met, proceed even if other validation fails
     }
 
     if (state.submit_answer_selected == null) return; // Answer is required
@@ -163,12 +167,14 @@ fn submitQuestion(state: *types.GameState) void {
 
 // Callback for question submission
 export fn onQuestionSubmitted(success: i32, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
-    if (success == 1) {
-        // Could show a success message to the user here
-    } else {
-        const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
-        // Could show error message to user here
-        _ = error_msg;
+    if (g_state) |state| {
+        if (success == 1) {
+            state.game_state = .SubmitThanks;
+        } else {
+            const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
+            // Could show error message to user here
+            _ = error_msg;
+        }
     }
 }
 
@@ -202,10 +208,21 @@ pub export fn deinit(allocator: *std.mem.Allocator, state: *types.GameState) cal
 pub export fn update(state: *types.GameState) callconv(.C) void {
     // Always update screen size and orientation every frame (no throttling)
     const size = utils.get_canvas_size();
+    const size_changed = (state.last_screen_width != size.w or state.last_screen_height != size.h);
     state.last_screen_width = size.w;
     state.last_screen_height = size.h;
     const aspect_ratio = @as(f32, @floatFromInt(size.w)) / @as(f32, @floatFromInt(size.h));
     state.orientation = if (aspect_ratio > 1.2) .Horizontal else .Vertical;
+
+    // Update HTML input position if screen size changed and we're in submitting mode
+    if (size_changed and state.game_state == .Submitting and (state.input_active or state.tags_input_active)) {
+        const layout = render.calculateLayout(state);
+        if (state.input_active) {
+            _ = utils.js.updateTextInputPosition(@as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)), @as(i32, @intFromFloat(layout.input_box.width)), @as(i32, @intFromFloat(layout.input_box.height)));
+        } else if (state.tags_input_active) {
+            _ = utils.js.updateTextInputPosition(@as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)), @as(i32, @intFromFloat(layout.tags_input_box.width)), @as(i32, @intFromFloat(layout.tags_input_box.height)));
+        }
+    }
 
     // Track state transitions on mobile
     const is_mobile = size.w < 600 and size.h > size.w;
@@ -278,28 +295,27 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.fg_color = new_pal.fg;
             }
         } else if (rl.checkCollisionPointRec(pos, layout.submit_btn) and render.shouldShowSubmitButton(state)) {
+            // Enter submit mode - save current state for back navigation
+            state.previous_state = state.game_state;
             state.game_state = .Submitting;
-            // Initialize submit form state cleanly
             state.input_active = false;
-            state.tags_input_active = false;
             state.input_len = 0;
             state.input_buffer[0] = 0;
+            state.tags_input_active = false;
             state.tags_input_len = 0;
             state.tags_input_buffer[0] = 0;
             state.submit_answer_selected = null;
+
+            // For mouse users, ensure no HTML input exists that could interfere
+            if (input_event.source == .mouse) {
+                _ = utils.js.hideTextInput();
+            }
         } else if (rl.checkCollisionPointRec(pos, layout.answer_btn)) {
             // NEW GAME button - only respond if not in submit mode
             const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
             if (!hide_side_buttons) {
                 api.startModeSelection(state);
             }
-            // Categories button removed - now available through mode selection TODO: add back or remove
-            // } else if (rl.checkCollisionPointRec(pos, layout.categories_btn)) {
-            //     // CATEGORIES button - start category selection
-            //     const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
-            //     if (!hide_side_buttons) {
-            //         api.startCategorySelection(state);
-            //     }
         } else if (state.game_state == .ModeSelection) {
             // Handle mode selection interactions
             if (rl.checkCollisionPointRec(pos, layout.arcade_mode_btn)) {
@@ -367,43 +383,55 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 }
             }
         } else if (state.game_state == .Submitting and rl.checkCollisionPointRec(pos, layout.input_box)) {
-            // Save current input value if we're switching from tags to question
+            // Save current input value if we're switching from tags to question (HTML input only)
             if (state.tags_input_active and utils.js.isTextInputFocused()) {
                 const current_text = utils.js.getTextInputValueSlice();
                 const copy_len = @min(current_text.len, state.tags_input_buffer.len - 1);
                 @memcpy(state.tags_input_buffer[0..copy_len], current_text[0..copy_len]);
                 state.tags_input_len = copy_len;
                 state.tags_input_buffer[state.tags_input_len] = 0;
+                // Ensure HTML input is hidden before switching
+                _ = utils.js.hideTextInput();
             }
 
-            state.input_active = true;
-            state.tags_input_active = false;
+            // Only activate if not already active
+            if (!state.input_active) {
+                state.input_active = true;
+                state.tags_input_active = false;
 
-            // Show text input field for question input and load current question text
-            _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)), @as(i32, @intFromFloat(layout.input_box.width)), @as(i32, @intFromFloat(layout.input_box.height)), "Enter your question...");
-
-            // Set the input value to current question text
-            const question_text = state.input_buffer[0..state.input_len];
-            _ = utils.js.setTextInputValueFromString(question_text);
+                // Use HTML input overlay ONLY for touch/mobile devices
+                if (input_event.source == .touch) {
+                    // Small delay to ensure previous input is cleaned up
+                    const question_text = state.input_buffer[0..state.input_len];
+                    _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)), @as(i32, @intFromFloat(layout.input_box.width)), @as(i32, @intFromFloat(layout.input_box.height)), "");
+                    _ = utils.js.setTextInputValueFromString(question_text);
+                }
+            }
         } else if (state.game_state == .Submitting and rl.checkCollisionPointRec(pos, layout.tags_input_box)) {
-            // Save current input value if we're switching from question to tags
+            // Save current input value if we're switching from question to tags (HTML input only)
             if (state.input_active and utils.js.isTextInputFocused()) {
                 const current_text = utils.js.getTextInputValueSlice();
                 const copy_len = @min(current_text.len, state.input_buffer.len - 1);
                 @memcpy(state.input_buffer[0..copy_len], current_text[0..copy_len]);
                 state.input_len = copy_len;
                 state.input_buffer[state.input_len] = 0;
+                // Ensure HTML input is hidden before switching
+                _ = utils.js.hideTextInput();
             }
 
-            state.tags_input_active = true;
-            state.input_active = false;
+            // Only activate if not already active
+            if (!state.tags_input_active) {
+                state.tags_input_active = true;
+                state.input_active = false;
 
-            // Show text input field for tags input and load current tags text
-            _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)), @as(i32, @intFromFloat(layout.tags_input_box.width)), @as(i32, @intFromFloat(layout.tags_input_box.height)), "Enter tags (comma separated)...");
-
-            // Set the input value to current tags text
-            const tags_text = state.tags_input_buffer[0..state.tags_input_len];
-            _ = utils.js.setTextInputValueFromString(tags_text);
+                // Use HTML input overlay ONLY for touch/mobile devices
+                if (input_event.source == .touch) {
+                    // Small delay to ensure previous input is cleaned up
+                    const tags_text = state.tags_input_buffer[0..state.tags_input_len];
+                    _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)), @as(i32, @intFromFloat(layout.tags_input_box.width)), @as(i32, @intFromFloat(layout.tags_input_box.height)), "");
+                    _ = utils.js.setTextInputValueFromString(tags_text);
+                }
+            }
         } else if (state.game_state == .Submitting) {
             // Check for answer selection buttons
             if (rl.checkCollisionPointRec(pos, layout.submit_true_btn)) {
@@ -411,8 +439,8 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             } else if (rl.checkCollisionPointRec(pos, layout.submit_false_btn)) {
                 state.submit_answer_selected = false;
             } else if (rl.checkCollisionPointRec(pos, layout.submit_question_btn)) {
-                // Save current input value before submitting
-                if (utils.js.isTextInputFocused()) {
+                // Save current input value before submitting (only for touch users with HTML input)
+                if (utils.js.isTextInputFocused() and input_event.source == .touch) {
                     const current_text = utils.js.getTextInputValueSlice();
                     if (state.input_active) {
                         const copy_len = @min(current_text.len, state.input_buffer.len - 1);
@@ -430,12 +458,12 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 // Submit the question - check all required fields
                 if (state.input_len >= 5 and state.submit_answer_selected != null and state.tags_input_len > 0) {
                     submitQuestion(state);
-                    // Hide the text input after submission
+                    // Always hide any HTML text input after submission
                     _ = utils.js.hideTextInput();
                 }
             } else if (rl.checkCollisionPointRec(pos, layout.back_btn)) {
-                // Save current input value before going back
-                if (utils.js.isTextInputFocused()) {
+                // Save current input value before going back (only for touch users with HTML input)
+                if (utils.js.isTextInputFocused() and input_event.source == .touch) {
                     const current_text = utils.js.getTextInputValueSlice();
                     if (state.input_active) {
                         const copy_len = @min(current_text.len, state.input_buffer.len - 1);
@@ -451,11 +479,7 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 }
 
                 // Go back to previous state
-                if (state.session.finished) {
-                    state.game_state = .Finished;
-                } else {
-                    state.game_state = .Answering;
-                }
+                state.game_state = state.previous_state;
                 state.input_active = false;
                 state.input_len = 0;
                 state.input_buffer[0] = 0;
@@ -463,7 +487,7 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.tags_input_len = 0;
                 state.tags_input_buffer[0] = 0;
                 state.submit_answer_selected = null;
-                // Hide the text input when going back
+                // Always hide any HTML text input when going back
                 _ = utils.js.hideTextInput();
             }
         } else if (state.game_state == .SubmitThanks) {
@@ -471,8 +495,9 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             // Calculate the same button positions as in drawSubmitThanksScreen
             const constants = render.getResponsiveConstants();
             const button_spacing = types.ELEMENT_SPACING + 20; // Extra buffer space between buttons
-            const button_width = constants.confirm_w;
-            const button_height = constants.confirm_h;
+            // Use same bigger button sizes as in render code
+            const button_width = constants.confirm_w * 1.4; // 40% bigger width
+            const button_height = constants.confirm_h * 1.3; // 30% bigger height
 
             // Calculate total height needed for both buttons with spacing
             const total_buttons_height = @as(i32, @intFromFloat(button_height * 2)) + button_spacing;
@@ -511,11 +536,7 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.submit_answer_selected = null;
             } else if (rl.checkCollisionPointRec(pos, back_button_rect)) {
                 // "Back to Game" button - go back to appropriate state
-                if (state.session.finished) {
-                    state.game_state = .Finished;
-                } else {
-                    state.game_state = .Answering;
-                }
+                state.game_state = state.previous_state;
             }
         } else if (rl.checkCollisionPointRec(pos, layout.button_rect_true)) {
             state.selected = true;
@@ -558,12 +579,31 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
         } else {
             // Clicked outside any interactive elements
             if (state.game_state == .Submitting) {
-                // If clicking outside input areas while in submitting state, hide text input
+                // If clicking outside input areas while in submitting state, properly deactivate input
                 if (!rl.checkCollisionPointRec(pos, layout.input_box) and
                     !rl.checkCollisionPointRec(pos, layout.tags_input_box))
                 {
+                    // Save any current input value before deactivating (only for touch users with HTML input)
+                    if (utils.js.isTextInputFocused() and input_event.source == .touch) {
+                        const current_text = utils.js.getTextInputValueSlice();
+                        if (state.input_active) {
+                            const copy_len = @min(current_text.len, state.input_buffer.len - 1);
+                            @memcpy(state.input_buffer[0..copy_len], current_text[0..copy_len]);
+                            state.input_len = copy_len;
+                            state.input_buffer[state.input_len] = 0;
+                        } else if (state.tags_input_active) {
+                            const copy_len = @min(current_text.len, state.tags_input_buffer.len - 1);
+                            @memcpy(state.tags_input_buffer[0..copy_len], current_text[0..copy_len]);
+                            state.tags_input_len = copy_len;
+                            state.tags_input_buffer[state.tags_input_len] = 0;
+                        }
+                    }
+
+                    // Deactivate input state first
                     state.input_active = false;
                     state.tags_input_active = false;
+
+                    // Then hide HTML input after state is updated
                     _ = utils.js.hideTextInput();
                 }
             }

@@ -531,231 +531,230 @@ var TruthByteLib = {
   // --- Text Input Management (Single Persistent Field) ---
   
   showTextInput: function(x, y, width, height, placeholder_ptr, placeholder_len) {
-    // Convert Zig string to JavaScript string
-    var placeholder = '';
-    if (placeholder_ptr && placeholder_len > 0) {
-      placeholder = UTF8ToString(placeholder_ptr, placeholder_len);
-    }
-
     // Remove any existing input first
     var existingInput = document.getElementById('truthbyte-text-input');
     if (existingInput) {
+      // Force immediate blur before removal
+      if (document.activeElement === existingInput) {
+        existingInput.blur();
+        document.body.focus(); // Focus something else
+      }
       existingInput.remove();
     }
     
-    // Try contenteditable div instead of input - sometimes works better on mobile
-    // Create a simple text input that only accepts plain text
-    var textInput = document.createElement('input');
-    textInput.type = 'text';
-    textInput.id = 'truthbyte-text-input';
-    
-    // Styling for contenteditable div
-    textInput.style.position = 'absolute';
-    textInput.style.zIndex = '10000';
-    textInput.style.fontSize = '16px';
-    textInput.style.fontFamily = 'Arial, sans-serif';
-    textInput.style.outline = 'none'; // Remove focus outline
-    textInput.style.whiteSpace = 'nowrap'; // Prevent line breaks
-    textInput.style.overflow = 'hidden'; // Hide overflow
-    
-    // Position the input exactly over the game's input box area
-    textInput.style.left = x + 'px';
-    textInput.style.top = y + 'px';
-    textInput.style.width = width + 'px';
-    textInput.style.height = height + 'px';
-    textInput.style.opacity = '1'; // Fully visible for debugging
-    textInput.style.display = 'block';
-    textInput.style.visibility = 'visible';
-    textInput.style.pointerEvents = 'auto';
-    textInput.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-    textInput.style.border = '2px solid red'; // Red border to distinguish from input
-    textInput.style.color = 'black';
-    textInput.style.lineHeight = height + 'px'; // Vertical center
-    textInput.style.paddingLeft = '8px';
-    textInput.style.boxSizing = 'border-box';
-    
-    // Add placeholder for regular input
-    if (placeholder) {
-      textInput.placeholder = placeholder;
-    }
-    
-    // Add event listeners
-    textInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' || e.key === 'Return') {
+    // Small delay to ensure cleanup is complete before creating new input
+    setTimeout(function() {
+      // Create a simple text input that only accepts plain text
+      var textInput = document.createElement('input');
+      textInput.type = 'text';
+      textInput.id = 'truthbyte-text-input';
+      
+      // Styling for contenteditable div
+      textInput.style.position = 'absolute';
+      textInput.style.zIndex = '10000';
+      textInput.style.fontSize = '16px';
+      textInput.style.fontFamily = 'Arial, sans-serif';
+      textInput.style.outline = 'none'; // Remove focus outline
+      textInput.style.whiteSpace = 'nowrap'; // Prevent line breaks
+      textInput.style.overflow = 'hidden'; // Hide overflow
+      
+      // Position the input exactly over the game's input box area
+      textInput.style.left = x + 'px';
+      textInput.style.top = y + 'px';
+      textInput.style.width = width + 'px';
+      textInput.style.height = height + 'px';
+      textInput.style.opacity = '0.0';
+      textInput.style.display = 'block';
+      textInput.style.visibility = 'visible';
+      textInput.style.pointerEvents = 'none'; // Start non-interactive
+      textInput.style.backgroundColor = 'transparent';
+      textInput.style.border = 'none'; // No border at all
+      textInput.style.outline = 'none'; // No outline
+      textInput.style.color = 'transparent';
+      textInput.style.caretColor = 'transparent'; // Hide cursor too
+      textInput.style.lineHeight = height + 'px'; // Vertical center
+      textInput.style.paddingLeft = '8px';
+      textInput.style.boxSizing = 'border-box';
+      
+      // Add event listeners
+      textInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === 'Return') {
+          e.preventDefault();
+          e.stopPropagation();
+          textInput.blur();
+          return;
+        }
+        // Handle Escape key to cancel input
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          textInput.blur();
+          TruthByteLib.hideTextInput();
+          return;
+        }
+      });
+        
+      // Handle mousedown on the input specially
+      textInput.addEventListener('mousedown', function(e) {
+        // If clicking inside input, let it handle normally
+        if (document.activeElement === textInput) {
+          e.stopPropagation(); // Prevent double-handling
+        }
+      });
+
+      // Handle click on the input specially
+      textInput.addEventListener('click', function(e) {
+        // If clicking inside input, let it handle normally
+        if (document.activeElement === textInput) {
+          e.stopPropagation(); // Prevent double-handling
+        }
+      });
+      
+      // SECURITY: Block paste events with binary/malicious content
+      textInput.addEventListener('paste', function(e) {
         e.preventDefault();
-        e.stopPropagation();
-        textInput.blur();
-        TruthByteLib.hideTextInput();
-        return;
-      }
-    });
-  
-        // SECURITY: Block paste events with binary/malicious content
-    textInput.addEventListener('paste', function(e) {
-      e.preventDefault();
-      
-      var clipboardData = e.clipboardData || window.clipboardData;
-      if (!clipboardData) return;
-            
-      // Get pasted text
-      var pastedText = clipboardData.getData('text/plain') || clipboardData.getData('text');
-      if (!pastedText) return;
-      
-      // Security validation
-      function containsSuspiciousContent(text) {
-        // Check for binary content (non-printable characters)
-        for (var i = 0; i < text.length; i++) {
-          var charCode = text.charCodeAt(i);
-          if (charCode < 32 && charCode !== 9 && charCode !== 10 && charCode !== 13) {
-            return true; // Contains binary/control characters
+        
+        var clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+              
+        // Get pasted text
+        var pastedText = clipboardData.getData('text/plain') || clipboardData.getData('text');
+        if (!pastedText) return;
+        
+        // Security validation
+        function containsSuspiciousContent(text) {
+          // Check for binary content (non-printable characters)
+          for (var i = 0; i < text.length; i++) {
+            var charCode = text.charCodeAt(i);
+            if (charCode < 32 && charCode !== 9 && charCode !== 10 && charCode !== 13) {
+              return true; // Contains binary/control characters
+            }
           }
+          
+          // Check for suspicious patterns
+          var suspiciousPatterns = [
+            '<script', 'javascript:', 'data:', 'vbscript:', 'onload=', 'onerror=',
+            'onclick=', 'eval(', 'document.', 'window.', '\\x', '\\u',
+            '%3c', '%3e', '&#'
+          ];
+          
+          // Check for placeholder/invalid content
+          var invalidPatterns = [
+            'question', 'enter question', 'type question', 'your question',
+            'question here', 'ask question', 'placeholder', 'example',
+            'sample', 'test', 'testing', 'asdf', 'qwerty', 'lorem ipsum'
+          ];
+          
+          var lowerText = text.toLowerCase();
+          
+          for (var i = 0; i < suspiciousPatterns.length; i++) {
+            if (lowerText.indexOf(suspiciousPatterns[i]) !== -1) {
+              return true;
+            }
+          }
+          
+          for (var i = 0; i < invalidPatterns.length; i++) {
+            if (lowerText.indexOf(invalidPatterns[i]) !== -1) {
+              return true;
+            }
+          }
+          
+          return false;
         }
         
-        // Check for suspicious patterns
-        var suspiciousPatterns = [
-          '<script', 'javascript:', 'data:', 'vbscript:', 'onload=', 'onerror=',
-          'onclick=', 'eval(', 'document.', 'window.', '\\x', '\\u',
-          '%3c', '%3e', '&#'
-        ];
-        
-        // Check for placeholder/invalid content
-        var invalidPatterns = [
-          'question', 'enter question', 'type question', 'your question',
-          'question here', 'ask question', 'placeholder', 'example',
-          'sample', 'test', 'testing', 'asdf', 'qwerty', 'lorem ipsum'
-        ];
-        
-        var lowerText = text.toLowerCase();
-        
-        for (var i = 0; i < suspiciousPatterns.length; i++) {
-          if (lowerText.indexOf(suspiciousPatterns[i]) !== -1) {
-            return true;
-          }
+        // Block suspicious content
+        if (containsSuspiciousContent(pastedText)) {
+          return;
         }
         
-        for (var i = 0; i < invalidPatterns.length; i++) {
-          if (lowerText.indexOf(invalidPatterns[i]) !== -1) {
-            return true;
-          }
-        }
+        // Sanitize and limit length
+        var sanitized = '';
+        var maxLength = 200; // Question max length
+        var consecutiveSpaces = 0;
         
-        return false;
-      }
-      
-      // Block suspicious content
-      if (containsSuspiciousContent(pastedText)) {
-        return;
-      }
-      
-      // Sanitize and limit length
-      var sanitized = '';
-      var maxLength = 200; // Question max length
-      var consecutiveSpaces = 0;
-      
-      for (var i = 0; i < Math.min(pastedText.length, maxLength); i++) {
-        var char = pastedText[i];
-        var charCode = char.charCodeAt(0);
-        
-        // Only allow printable ASCII
-        if (charCode >= 32 && charCode <= 126) {
-          if (char === ' ') {
-            consecutiveSpaces++;
-            if (consecutiveSpaces <= 2) {
+        for (var i = 0; i < Math.min(pastedText.length, maxLength); i++) {
+          var char = pastedText[i];
+          var charCode = char.charCodeAt(0);
+          
+          // Only allow printable ASCII
+          if (charCode >= 32 && charCode <= 126) {
+            if (char === ' ') {
+              consecutiveSpaces++;
+              if (consecutiveSpaces <= 2) {
+                sanitized += char;
+              }
+            } else {
+              consecutiveSpaces = 0;
               sanitized += char;
             }
-          } else {
-            consecutiveSpaces = 0;
-            sanitized += char;
           }
         }
-      }
-      
-      // Set the sanitized text directly to input value
-      if (sanitized.length > 0) {
-        textInput.value = sanitized;
-      }
-    });
-    
-    // Simple input validation on typing
-    textInput.addEventListener('input', function(e) {
-      // Limit length and validate characters in real-time
-      var value = textInput.value;
-      var sanitized = '';
-      
-      for (var i = 0; i < Math.min(value.length, 200); i++) {
-        var charCode = value.charCodeAt(i);
-        if (charCode >= 32 && charCode <= 126) {
-          sanitized += value[i];
+        
+        // Set the sanitized text directly to input value
+        if (sanitized.length > 0) {
+          textInput.value = sanitized;
         }
-      }
+      });
       
-      if (sanitized !== value) {
-        textInput.value = sanitized;
-      }
-    });
-    
-    // SECURITY: Block drag and drop of files/images
-    textInput.addEventListener('dragover', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    
-    textInput.addEventListener('drop', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      var files = e.dataTransfer.files;
-      if (files && files.length > 0) {
-        console.warn('🚫 File drop blocked - only text input allowed');
-        return;
-      }
-      
-      // Allow text drops but validate them
-      var droppedText = e.dataTransfer.getData('text/plain');
-      if (droppedText) {
-        // Simple sanitization
+      // Simple input validation on typing
+      textInput.addEventListener('input', function(e) {
+        // Limit length and validate characters in real-time
+        var value = textInput.value;
         var sanitized = '';
-        for (var i = 0; i < Math.min(droppedText.length, 200); i++) {
-          var charCode = droppedText.charCodeAt(i);
+        
+        for (var i = 0; i < Math.min(value.length, 200); i++) {
+          var charCode = value.charCodeAt(i);
           if (charCode >= 32 && charCode <= 126) {
-            sanitized += droppedText[i];
+            sanitized += value[i];
           }
         }
-        textInput.value = sanitized;
-      }
-    });
-     
-     // Add click-outside-to-hide functionality
-     var clickOutsideHandler = function(e) {
-       // Check if click is outside the text input
-       if (!textInput.contains(e.target)) {
-         TruthByteLib.hideTextInput();
-         // Remove this specific event listener when hiding
-         document.removeEventListener('click', clickOutsideHandler, true);
-       }
-     };
-     
-     // Add the click listener with capture=true to catch clicks before they bubble
-     setTimeout(function() {
-       document.addEventListener('click', clickOutsideHandler, true);
-     }, 100); // Small delay to avoid immediate hiding from the click that showed the input
-     
-     document.body.appendChild(textInput);
-    
-    // Focus the contenteditable div
-    setTimeout(function() {
-      textInput.focus();
+        
+        if (sanitized !== value) {
+          textInput.value = sanitized;
+        }
+      });
       
-      // Move cursor to end if there's content
-      if (textInput.textContent.length > 0) {
-        var range = document.createRange();
-        var sel = window.getSelection();
-        range.setStart(textInput, textInput.childNodes.length);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-    }, 100);
+      // SECURITY: Block drag and drop of files/images
+      textInput.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      
+      textInput.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        var files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          console.warn('🚫 File drop blocked - only text input allowed');
+          return;
+        }
+        
+        // Allow text drops but validate them
+        var droppedText = e.dataTransfer.getData('text/plain');
+        if (droppedText) {
+          // Simple sanitization
+          var sanitized = '';
+          for (var i = 0; i < Math.min(droppedText.length, 200); i++) {
+            var charCode = droppedText.charCodeAt(i);
+            if (charCode >= 32 && charCode <= 126) {
+              sanitized += droppedText[i];
+            }
+          }
+          textInput.value = sanitized;
+        }
+      });
+       
+       document.body.appendChild(textInput);
+      
+      // For touch users, focus the input immediately to make it interactive
+      // For mouse users, it stays non-interactive (pointerEvents: 'none')
+      setTimeout(function() {
+        if (textInput && textInput.parentNode) {
+          textInput.focus();
+        }
+      }, 50);
+    }, 10);
     
     return true;
   },
@@ -763,10 +762,26 @@ var TruthByteLib = {
   hideTextInput: function() {
     var textInput = document.getElementById('truthbyte-text-input');
     if (textInput) {
-      textInput.style.display = 'none';
-      textInput.style.visibility = 'hidden';
-      textInput.style.pointerEvents = 'none';
-      textInput.blur();
+      // Force immediate blur before removal
+      if (document.activeElement === textInput) {
+        textInput.blur();
+        document.body.focus(); // Focus something else
+      }
+      
+      // Completely remove the element to prevent any click interference
+      textInput.remove();
+    }
+    return true;
+  },
+
+  // Update text input position (for screen resize)
+  updateTextInputPosition: function(x, y, width, height) {
+    var textInput = document.getElementById('truthbyte-text-input');
+    if (textInput && textInput.style.display !== 'none') {
+      textInput.style.left = x + 'px';
+      textInput.style.top = y + 'px';
+      textInput.style.width = width + 'px';
+      textInput.style.height = height + 'px';
     }
     return true;
   },

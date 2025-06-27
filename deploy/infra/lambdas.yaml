@@ -98,6 +98,9 @@ Resources:
           SUBMITTED_QUESTIONS_TABLE_NAME: 
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-SubmittedQuestionsTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
 
   GetTokenFunction:
     Type: AWS::Lambda::Function
