@@ -15,7 +15,7 @@ def lambda_handler(event, context):
     AWS Lambda handler for getting user data.
     
     The function expects an event from API Gateway and returns user data
-    including user_id, trust_score, and tags.
+    including user_id, trust_score, and daily progress information.
     
     Requires JWT authentication via Authorization: Bearer <token> header.
     Requires X-User-ID header.
@@ -96,7 +96,10 @@ def lambda_handler(event, context):
                 'last_active': user['last_active'],
                 'total_questions_answered': user['total_questions_answered'],
                 'correct_answers': user['correct_answers'],
-                'tags': user['tags']
+                'daily_progress': user.get('daily_progress', {}),
+                'current_daily_streak': user.get('current_daily_streak', 0),
+                'best_daily_streak': user.get('best_daily_streak', 0),
+                'total_daily_games': user.get('total_daily_games', 0)
             }, cls=DecimalEncoder)
         }
         

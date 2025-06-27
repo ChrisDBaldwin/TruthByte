@@ -153,85 +153,33 @@ var TruthByteLib = {
     var token = _authToken;
     return lengthBytesUTF8(token);
   },
+
+  // Get current UTC date in YYYY-MM-DD format
+  get_current_date: function() {
+    var now = new Date();
+    var year = now.getUTCFullYear();
+    var month = String(now.getUTCMonth() + 1).padStart(2, '0'); // getUTCMonth() returns 0-11
+    var day = String(now.getUTCDate()).padStart(2, '0');
+    var dateStr = year + '-' + month + '-' + day;
     
-  get_invited_shown: function () {
-    return 0;
+    var len = lengthBytesUTF8(dateStr) + 1;
+    var ptr = _malloc(len);
+    stringToUTF8(dateStr, ptr, len);
+    return ptr;
   },
 
-  set_invited_shown: function(val) {
-    // ToDo: Implement this
-  },
-
-  // Fetch questions from the backend
-  // Parameters: num_questions (optional), tag (optional), user_id_ptr, user_id_len, callback_ptr
-  fetch_questions: function(num_questions, tag_ptr, tag_len, user_id_ptr, user_id_len, callback_ptr) {
-    var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
-    var params = new URLSearchParams();
-    
-    if (num_questions > 0) {
-      params.append('num_questions', num_questions.toString());
-    }
-    
-    if (tag_ptr && tag_len > 0) {
-      var tag = UTF8ToString(tag_ptr, tag_len);
-      params.append('tag', tag);
-    }
-    
-    if (params.toString()) {
-      url += '?' + params.toString();
-    }
-    
-    var headers = {
-      'Content-Type': 'application/json'
-    };
-    
-    // Add Authorization header if we have a token
-    if (_authToken) {
-      headers['Authorization'] = 'Bearer ' + _authToken;
-    }
-    
-    // Add User ID header from Zig
-    var userId = user_id_ptr && user_id_len > 0 ? UTF8ToString(user_id_ptr, user_id_len) : '';
-    headers['X-User-ID'] = userId;
-    
-    fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      headers: headers
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json();
-    })
-    .then(data => {
-      // Convert response to JSON string and pass to Zig callback
-      var jsonStr = JSON.stringify(data);
-      var len = lengthBytesUTF8(jsonStr) + 1;
-      var ptr = _malloc(len);
-      stringToUTF8(jsonStr, ptr, len);
-      
-      // Call Zig callback with success (1), data pointer, and length
-      dynCall_viii(callback_ptr, 1, ptr, len);
-      _free(ptr);
-    })
-    .catch(error => {
-      console.error('❌ Fetch questions error:', error);
-      var errorStr = error.message || 'Unknown error';
-      var len = lengthBytesUTF8(errorStr) + 1;
-      var ptr = _malloc(len);
-      stringToUTF8(errorStr, ptr, len);
-      
-      // Call Zig callback with failure (0), error pointer, and length
-      dynCall_viii(callback_ptr, 0, ptr, len);
-      _free(ptr);
-    });
+  get_current_date_len: function() {
+    var now = new Date();
+    var year = now.getUTCFullYear();
+    var month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    var day = String(now.getUTCDate()).padStart(2, '0');
+    var dateStr = year + '-' + month + '-' + day;
+    return lengthBytesUTF8(dateStr);
   },
 
   // Fetch questions with category and difficulty support
   // Parameters: num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr
-  fetch_questions_enhanced: function(num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr) {
+  fetch_questions: function(num_questions, category_ptr, category_len, difficulty, user_id_ptr, user_id_len, callback_ptr) {
     var url = "https://api.truthbyte.voidtalker.com/v1/fetch-questions";
     var params = new URLSearchParams();
     
@@ -890,6 +838,124 @@ var TruthByteLib = {
     }, 10);
     
     return true;
+  },
+
+  // Fetch daily questions for the current day
+  // Parameters: user_id_ptr, user_id_len, callback_ptr
+  fetch_daily_questions: function(user_id_ptr, user_id_len, callback_ptr) {
+    var headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Add Authorization header if we have a token
+    if (_authToken) {
+      headers['Authorization'] = 'Bearer ' + _authToken;
+    }
+    
+    // Add User ID header from Zig
+    var userId = user_id_ptr && user_id_len > 0 ? UTF8ToString(user_id_ptr, user_id_len) : '';
+    headers['X-User-ID'] = userId;
+    
+    fetch("https://api.truthbyte.voidtalker.com/v1/fetch-daily-questions", {
+      method: 'GET',
+      mode: 'cors',
+      headers: headers
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      // Convert response to JSON string and pass to Zig callback
+      var jsonStr = JSON.stringify(data);
+      var len = lengthBytesUTF8(jsonStr) + 1;
+      var ptr = _malloc(len);
+      stringToUTF8(jsonStr, ptr, len);
+      
+      // Call Zig callback with success (1), data pointer, and length
+      dynCall_viii(callback_ptr, 1, ptr, len);
+      _free(ptr);
+    })
+    .catch(error => {
+      console.error('❌ Fetch daily questions error:', error);
+      var errorStr = error.message || 'Unknown error';
+      var len = lengthBytesUTF8(errorStr) + 1;
+      var ptr = _malloc(len);
+      stringToUTF8(errorStr, ptr, len);
+      
+      // Call Zig callback with failure (0), error pointer, and length
+      dynCall_viii(callback_ptr, 0, ptr, len);
+      _free(ptr);
+    });
+  },
+
+  // Submit daily answers to the backend
+  // Parameters: answers_json_ptr, answers_json_len, user_id_ptr, user_id_len, callback_ptr
+  submit_daily_answers: function(answers_json_ptr, answers_json_len, user_id_ptr, user_id_len, callback_ptr) {
+    var answersJson = UTF8ToString(answers_json_ptr, answers_json_len);
+    
+    var answers;
+    
+    try {
+      answers = JSON.parse(answersJson);
+    } catch (e) {
+      var errorStr = 'Invalid JSON format';
+      var len = lengthBytesUTF8(errorStr) + 1;
+      var ptr = _malloc(len);
+      stringToUTF8(errorStr, ptr, len);
+      dynCall_viii(callback_ptr, 0, ptr, len);
+      _free(ptr);
+      return;
+    }
+    
+    var headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Add Authorization header if we have a token
+    if (_authToken) {
+      headers['Authorization'] = 'Bearer ' + _authToken;
+    }
+    
+    // Add User ID header from Zig
+    headers['X-User-ID'] = user_id_ptr && user_id_len > 0 ? UTF8ToString(user_id_ptr, user_id_len) : '';
+    
+    fetch("https://api.truthbyte.voidtalker.com/v1/submit-daily-answers", {
+      method: 'POST',
+      mode: 'cors',
+      headers: headers,
+      body: JSON.stringify(answers)
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      // Convert response to JSON string and pass to Zig callback
+      var jsonStr = JSON.stringify(data);
+      var len = lengthBytesUTF8(jsonStr) + 1;
+      var ptr = _malloc(len);
+      stringToUTF8(jsonStr, ptr, len);
+      
+      // Call Zig callback with success (1), data pointer, and length
+      dynCall_viii(callback_ptr, 1, ptr, len);
+      _free(ptr);
+    })
+    .catch(error => {
+      console.error('❌ Submit daily answers error:', error);
+      var errorStr = error.message || 'Unknown error';
+      var len = lengthBytesUTF8(errorStr) + 1;
+      var ptr = _malloc(len);
+      stringToUTF8(errorStr, ptr, len);
+      
+      // Call Zig callback with failure (0), error pointer, and length
+      dynCall_viii(callback_ptr, 0, ptr, len);
+      _free(ptr);
+    });
   },
 
   // Legacy compatibility (redirect to new system)

@@ -95,7 +95,6 @@ pub const UILayout = struct {
     randomize_btn: rl.Rectangle,
     submit_btn: rl.Rectangle,
     answer_btn: rl.Rectangle,
-    categories_btn: rl.Rectangle,
     input_box: rl.Rectangle,
     back_btn: rl.Rectangle,
     // Submit form elements
@@ -106,6 +105,10 @@ pub const UILayout = struct {
     // Category selection elements
     category_buttons: [20]rl.Rectangle,
     difficulty_buttons: [5]rl.Rectangle,
+    // Mode selection elements
+    arcade_mode_btn: rl.Rectangle,
+    categories_mode_btn: rl.Rectangle,
+    daily_mode_btn: rl.Rectangle,
 };
 
 pub fn calculateLayout(state: *types.GameState) UILayout {
@@ -176,12 +179,8 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
     const answer_btn_y = randomize_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const answer_btn = rl.Rectangle{ .x = button_stack_x, .y = answer_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // CATEGORIES button (third in stack)
-    const categories_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
-    const categories_btn = rl.Rectangle{ .x = button_stack_x, .y = categories_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
-
-    // SUBMIT button (bottom of stack)
-    const submit_btn_y = categories_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    // SUBMIT button (third in stack, replaces old categories position)
+    const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = button_stack_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
     // Submit form layout - use same centering approach as answering mode
@@ -308,7 +307,6 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
         .randomize_btn = randomize_btn,
         .submit_btn = submit_btn,
         .answer_btn = answer_btn,
-        .categories_btn = categories_btn,
         .input_box = input_box,
         .back_btn = back_btn,
         .tags_input_box = tags_input_box,
@@ -317,6 +315,10 @@ fn calculateVerticalLayoutWithSize(size: CanvasSize) UILayout {
         .submit_question_btn = submit_question_btn,
         .category_buttons = category_buttons,
         .difficulty_buttons = difficulty_buttons,
+        // Mode selection buttons (perfectly centered to match title and streak text)
+        .arcade_mode_btn = rl.Rectangle{ .x = @floatFromInt(@divTrunc(screen_width - 200, 2)), .y = @as(f32, @floatFromInt(question_y - 20)), .width = 200, .height = 60 },
+        .categories_mode_btn = rl.Rectangle{ .x = @floatFromInt(@divTrunc(screen_width - 200, 2)), .y = @as(f32, @floatFromInt(question_y + 60)), .width = 200, .height = 60 },
+        .daily_mode_btn = rl.Rectangle{ .x = @floatFromInt(@divTrunc(screen_width - 200, 2)), .y = @as(f32, @floatFromInt(question_y + 140)), .width = 200, .height = 60 },
     };
 }
 
@@ -380,12 +382,8 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
     const answer_btn_y = color_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const answer_btn = rl.Rectangle{ .x = side_panel_x, .y = answer_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
-    // CATEGORIES button (third in stack)
-    const h_categories_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
-    const h_categories_btn = rl.Rectangle{ .x = side_panel_x, .y = h_categories_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
-
-    // SUBMIT button (bottom of stack)
-    const submit_btn_y = h_categories_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
+    // SUBMIT button (third in stack, replaces old categories position)
+    const submit_btn_y = answer_btn_y + types.BOTTOM_BUTTON_HEIGHT + button_gap;
     const submit_btn = rl.Rectangle{ .x = side_panel_x, .y = submit_btn_y, .width = types.BOTTOM_BUTTON_WIDTH, .height = types.BOTTOM_BUTTON_HEIGHT };
 
     // Submit form layout for horizontal mode - use same centering approach
@@ -514,7 +512,6 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
         .randomize_btn = color_btn,
         .submit_btn = submit_btn,
         .answer_btn = answer_btn,
-        .categories_btn = h_categories_btn,
         .input_box = input_box,
         .back_btn = back_btn,
         .tags_input_box = h_tags_input_box,
@@ -523,6 +520,10 @@ fn calculateHorizontalLayoutWithSize(size: CanvasSize) UILayout {
         .submit_question_btn = h_submit_question_btn,
         .category_buttons = h_category_buttons,
         .difficulty_buttons = h_difficulty_buttons,
+        // Mode selection buttons (perfectly centered in question area for horizontal)
+        .arcade_mode_btn = rl.Rectangle{ .x = @floatFromInt(question_x + @divTrunc(actual_question_width - 200, 2)), .y = @as(f32, @floatFromInt(question_text_y - 20)), .width = 200, .height = 60 },
+        .categories_mode_btn = rl.Rectangle{ .x = @floatFromInt(question_x + @divTrunc(actual_question_width - 200, 2)), .y = @as(f32, @floatFromInt(question_text_y + 60)), .width = 200, .height = 60 },
+        .daily_mode_btn = rl.Rectangle{ .x = @floatFromInt(question_x + @divTrunc(actual_question_width - 200, 2)), .y = @as(f32, @floatFromInt(question_text_y + 140)), .width = 200, .height = 60 },
     };
 }
 
@@ -656,8 +657,8 @@ fn drawQuestionHeader(state: *types.GameState, layout: UILayout) void {
 fn drawQuestionText(state: *types.GameState, layout: UILayout) void {
     const constants = getResponsiveConstants();
 
-    // Safety check for mobile
-    if (state.session.questions.len == 0 or state.session.current >= state.session.questions.len) {
+    // Safety check for mobile and daily mode completion
+    if (state.session.current >= state.session.total_questions or state.session.finished) {
         return;
     }
 
@@ -738,7 +739,7 @@ pub fn drawFinishedScreen(state: *types.GameState, layout: UILayout) void {
 
     // Use a simpler approach to avoid WASM memory issues
     var score_buf: [32]u8 = undefined;
-    const score_str = std.fmt.bufPrintZ(&score_buf, "Score: {}/7", .{state.session.correct}) catch "Score: ?";
+    const score_str = std.fmt.bufPrintZ(&score_buf, "Score: {}/{}", .{ state.session.correct, state.session.total_questions }) catch "Score: ?";
     const score_width = rl.measureText(score_str, constants.large_font);
     rl.drawText(score_str, @divTrunc((layout.screen_width - score_width), 2), layout.question_y + types.MEDIUM_SPACING, constants.large_font, state.fg_color);
 
@@ -1020,139 +1021,196 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
 
         // Capital and base dimensions - much more prominent
         const capital_height = 28; // Increased from 16
-        const base_height = 24; // Increased from 12
         const capital_width = base_pillar_width + 16; // Much wider capital (was +8)
         const capital_x = pillar_x - 8; // Center the wider capital
 
-        // Draw multi-tiered base (classical stepped base)
+        // Define pixel-art color palette for column (subtle, complementary to UI)
+        const col_base_color = rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 90 }; // More subtle base
+        const col_highlight = rl.Color{ .r = @min(255, state.fg_color.r + 40), .g = @min(255, state.fg_color.g + 40), .b = @min(255, state.fg_color.b + 40), .a = 120 };
+        const col_shadow = rl.Color{ .r = state.fg_color.r / 3, .g = state.fg_color.g / 3, .b = state.fg_color.b / 3, .a = 100 };
+        const col_accent = rl.Color{ .r = @min(255, state.fg_color.r + 20), .g = @min(255, state.fg_color.g + 20), .b = @min(255, state.fg_color.b + 20), .a = 110 };
 
-        // Base tier 1 (bottom, widest)
-        const base_tier1_height = 10;
-        const base_tier1_width = capital_width + 4; // Even wider than capital
-        const base_tier1_x = capital_x - 2;
-        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), layout.screen_height - base_tier1_height, @as(i32, @intFromFloat(base_tier1_width)), base_tier1_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 180 });
-        // Base tier 1 highlight
-        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), layout.screen_height - base_tier1_height, @as(i32, @intFromFloat(base_tier1_width)), 2, rl.Color{ .r = @min(255, state.fg_color.r + 60), .g = @min(255, state.fg_color.g + 60), .b = @min(255, state.fg_color.b + 60), .a = 150 });
+        // === PIXEL-ART BASE (Classical stepped base) ===
 
-        // Base tier 2 (middle)
-        const base_tier2_height = 8;
-        const base_tier2_y = layout.screen_height - base_tier1_height - base_tier2_height;
-        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), base_tier2_y, @as(i32, @intFromFloat(capital_width)), base_tier2_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 170 });
-        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), base_tier2_y, @as(i32, @intFromFloat(capital_width)), 2, rl.Color{ .r = @min(255, state.fg_color.r + 50), .g = @min(255, state.fg_color.g + 50), .b = @min(255, state.fg_color.b + 50), .a = 140 });
+        // Base tier 1 (bottom plinth - widest)
+        const base_tier1_height = 8;
+        const base_tier1_width = capital_width + 8;
+        const base_tier1_x = capital_x - 4;
+        const base_tier1_y = layout.screen_height - base_tier1_height;
 
-        // Base tier 3 (top, connects to pillar)
-        const base_tier3_height = 6;
-        const base_tier3_y = layout.screen_height - base_tier1_height - base_tier2_height - base_tier3_height;
-        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), base_tier3_y, base_pillar_width, base_tier3_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 160 });
-        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), base_tier3_y, base_pillar_width, 2, rl.Color{ .r = @min(255, state.fg_color.r + 40), .g = @min(255, state.fg_color.g + 40), .b = @min(255, state.fg_color.b + 40), .a = 130 });
+        // Main base block
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), base_tier1_y, @as(i32, @intFromFloat(base_tier1_width)), base_tier1_height, col_base_color);
+        // Top highlight edge
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), base_tier1_y, @as(i32, @intFromFloat(base_tier1_width)), 1, col_highlight);
+        // Left highlight edge
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), base_tier1_y, 1, base_tier1_height, col_highlight);
+        // Bottom shadow edge
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)), base_tier1_y + base_tier1_height - 1, @as(i32, @intFromFloat(base_tier1_width)), 1, col_shadow);
+        // Right shadow edge
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier1_x)) + @as(i32, @intFromFloat(base_tier1_width)) - 1, base_tier1_y, 1, base_tier1_height, col_shadow);
 
-        // Draw elaborate capital (classical Corinthian-style)
-        // Capital tier 1 (top, abacus - widest part)
-        const cap_tier1_height = 8;
-        const cap_tier1_width = capital_width + 6; // Widest part at top
-        const cap_tier1_x = capital_x - 3;
-        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), 0, @as(i32, @intFromFloat(cap_tier1_width)), cap_tier1_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 180 });
-        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), 0, @as(i32, @intFromFloat(cap_tier1_width)), 2, rl.Color{ .r = @min(255, state.fg_color.r + 60), .g = @min(255, state.fg_color.g + 60), .b = @min(255, state.fg_color.b + 60), .a = 150 });
+        // Base tier 2 (middle torus)
+        const base_tier2_height = 6;
+        const base_tier2_width = capital_width + 2;
+        const base_tier2_x = capital_x - 1;
+        const base_tier2_y = base_tier1_y - base_tier2_height;
 
-        // Capital tier 2 (middle, decorative body)
-        const cap_tier2_height = 12;
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier2_x)), base_tier2_y, @as(i32, @intFromFloat(base_tier2_width)), base_tier2_height, col_base_color);
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier2_x)), base_tier2_y, @as(i32, @intFromFloat(base_tier2_width)), 1, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier2_x)), base_tier2_y, 1, base_tier2_height, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier2_x)), base_tier2_y + base_tier2_height - 1, @as(i32, @intFromFloat(base_tier2_width)), 1, col_shadow);
+        rl.drawRectangle(@as(i32, @intFromFloat(base_tier2_x)) + @as(i32, @intFromFloat(base_tier2_width)) - 1, base_tier2_y, 1, base_tier2_height, col_shadow);
+
+        // Base tier 3 (top - connects to shaft)
+        const base_tier3_height = 4;
+        const base_tier3_y = base_tier2_y - base_tier3_height;
+
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), base_tier3_y, base_pillar_width, base_tier3_height, col_base_color);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), base_tier3_y, base_pillar_width, 1, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), base_tier3_y, 1, base_tier3_height, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)) + base_pillar_width - 1, base_tier3_y, 1, base_tier3_height, col_shadow);
+
+        // === PIXEL-ART CAPITAL (Corinthian with acanthus leaves) ===
+
+        // Capital tier 1 (top abacus - widest part)
+        const cap_tier1_height = 6;
+        const cap_tier1_width = capital_width + 8;
+        const cap_tier1_x = capital_x - 4;
+
+        // Main abacus block
+        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), 0, @as(i32, @intFromFloat(cap_tier1_width)), cap_tier1_height, col_base_color);
+        // Pixel-art beveled edges
+        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), 0, @as(i32, @intFromFloat(cap_tier1_width)), 1, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), 0, 1, cap_tier1_height, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)), cap_tier1_height - 1, @as(i32, @intFromFloat(cap_tier1_width)), 1, col_shadow);
+        rl.drawRectangle(@as(i32, @intFromFloat(cap_tier1_x)) + @as(i32, @intFromFloat(cap_tier1_width)) - 1, 0, 1, cap_tier1_height, col_shadow);
+
+        // Capital tier 2 (acanthus leaf zone - main decorative area)
+        const cap_tier2_height = 16;
         const cap_tier2_y = cap_tier1_height;
-        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y, @as(i32, @intFromFloat(capital_width)), cap_tier2_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 170 });
-        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y, @as(i32, @intFromFloat(capital_width)), 2, rl.Color{ .r = @min(255, state.fg_color.r + 50), .g = @min(255, state.fg_color.g + 50), .b = @min(255, state.fg_color.b + 50), .a = 140 });
-        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y + cap_tier2_height - 2, @as(i32, @intFromFloat(capital_width)), 2, rl.Color{ .r = state.fg_color.r / 2, .g = state.fg_color.g / 2, .b = state.fg_color.b / 2, .a = 140 });
 
-        // Capital tier 3 (bottom, connects to pillar shaft)
-        const cap_tier3_height = 8;
+        // Main body
+        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y, @as(i32, @intFromFloat(capital_width)), cap_tier2_height, col_base_color);
+        // Frame with pixel-art edges
+        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y, @as(i32, @intFromFloat(capital_width)), 1, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y, 1, cap_tier2_height, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)), cap_tier2_y + cap_tier2_height - 1, @as(i32, @intFromFloat(capital_width)), 1, col_shadow);
+        rl.drawRectangle(@as(i32, @intFromFloat(capital_x)) + @as(i32, @intFromFloat(capital_width)) - 1, cap_tier2_y, 1, cap_tier2_height, col_shadow);
+
+        // PIXEL-ART ACANTHUS LEAVES PATTERN
+        const leaf_center_x = @as(i32, @intFromFloat(capital_x)) + @as(i32, @intFromFloat(capital_width)) / 2;
+        const leaf_start_y = cap_tier2_y + 2;
+
+        // Draw stylized acanthus leaves in pixel-art style
+        // Left leaf cluster
+        const left_leaf_x = leaf_center_x - 6;
+        // Leaf stem
+        rl.drawRectangle(left_leaf_x, leaf_start_y + 2, 1, 8, col_accent);
+        // Leaf body (diamond shape)
+        rl.drawRectangle(left_leaf_x - 1, leaf_start_y + 4, 3, 1, col_accent);
+        rl.drawRectangle(left_leaf_x - 2, leaf_start_y + 5, 5, 1, col_accent);
+        rl.drawRectangle(left_leaf_x - 1, leaf_start_y + 6, 3, 1, col_accent);
+        // Leaf highlights
+        rl.drawRectangle(left_leaf_x - 1, leaf_start_y + 4, 1, 1, col_highlight);
+        rl.drawRectangle(left_leaf_x - 2, leaf_start_y + 5, 1, 1, col_highlight);
+
+        // Right leaf cluster
+        const right_leaf_x = leaf_center_x + 4;
+        rl.drawRectangle(right_leaf_x, leaf_start_y + 2, 1, 8, col_accent);
+        rl.drawRectangle(right_leaf_x - 1, leaf_start_y + 4, 3, 1, col_accent);
+        rl.drawRectangle(right_leaf_x - 2, leaf_start_y + 5, 5, 1, col_accent);
+        rl.drawRectangle(right_leaf_x - 1, leaf_start_y + 6, 3, 1, col_accent);
+        rl.drawRectangle(right_leaf_x + 1, leaf_start_y + 4, 1, 1, col_highlight);
+        rl.drawRectangle(right_leaf_x + 2, leaf_start_y + 5, 1, 1, col_highlight);
+
+        // Center leaf (larger)
+        rl.drawRectangle(leaf_center_x, leaf_start_y, 1, 10, col_accent);
+        rl.drawRectangle(leaf_center_x - 2, leaf_start_y + 3, 5, 1, col_accent);
+        rl.drawRectangle(leaf_center_x - 3, leaf_start_y + 4, 7, 1, col_accent);
+        rl.drawRectangle(leaf_center_x - 2, leaf_start_y + 5, 5, 1, col_accent);
+        rl.drawRectangle(leaf_center_x - 1, leaf_start_y + 6, 3, 1, col_accent);
+        // Center leaf highlight
+        rl.drawRectangle(leaf_center_x - 2, leaf_start_y + 3, 1, 1, col_highlight);
+        rl.drawRectangle(leaf_center_x - 3, leaf_start_y + 4, 1, 1, col_highlight);
+
+        // Capital tier 3 (bottom neck - connects to shaft)
+        const cap_tier3_height = 6;
         const cap_tier3_y = cap_tier2_y + cap_tier2_height;
-        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y, base_pillar_width, cap_tier3_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = 160 });
-        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y + cap_tier3_height - 2, base_pillar_width, 2, rl.Color{ .r = state.fg_color.r / 2, .g = state.fg_color.g / 2, .b = state.fg_color.b / 2, .a = 140 });
 
-        // Add decorative molding lines on capital
-        var molding_y: i32 = cap_tier2_y + 3;
-        while (molding_y < cap_tier2_y + cap_tier2_height - 3) : (molding_y += 3) {
-            rl.drawRectangle(@as(i32, @intFromFloat(capital_x)) + 2, molding_y, @as(i32, @intFromFloat(capital_width)) - 4, 1, rl.Color{ .r = state.fg_color.r / 3, .g = state.fg_color.g / 3, .b = state.fg_color.b / 3, .a = 100 });
-        }
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y, base_pillar_width, cap_tier3_height, col_base_color);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y, base_pillar_width, 1, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y, 1, cap_tier3_height, col_highlight);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)) + base_pillar_width - 1, cap_tier3_y, 1, cap_tier3_height, col_shadow);
+        rl.drawRectangle(@as(i32, @intFromFloat(pillar_x)), cap_tier3_y + cap_tier3_height - 1, base_pillar_width, 1, col_shadow);
 
-        // Draw main pillar body with tapered shape and gradient
+        // === PIXEL-ART PILLAR SHAFT ===
         const pillar_start_y = capital_height;
-        const pillar_end_y = layout.screen_height - base_height;
+        const pillar_end_y = base_tier3_y;
         const pillar_body_height = pillar_end_y - pillar_start_y;
 
-        // Draw pillar in segments for gradient and tapering effect
-        const segment_height = 4;
+        // Main shaft body with subtle entasis (classical column swelling)
+        const shaft_segments = 8; // Divide shaft into segments for entasis effect
+        const segment_height = @divTrunc(pillar_body_height, shaft_segments);
+
         var segment_y: i32 = pillar_start_y;
-        while (segment_y < pillar_end_y) : (segment_y += segment_height) {
-            const progress = @as(f32, @floatFromInt(segment_y - pillar_start_y)) / @as(f32, @floatFromInt(pillar_body_height));
+        var segment_index: i32 = 0;
 
-            // Tapered width (narrower at top and bottom)
-            const taper_factor = 1.0 - (@abs(progress - 0.5) * 0.3); // Max taper of 30%
-            const current_width = @as(i32, @intFromFloat(@as(f32, @floatFromInt(base_pillar_width)) * taper_factor));
-            const current_x = pillar_x + @as(f32, @floatFromInt(base_pillar_width - current_width)) / 2.0;
+        while (segment_y < pillar_end_y and segment_index < shaft_segments) : ({
+            segment_y += segment_height;
+            segment_index += 1;
+        }) {
+            const progress = @as(f32, @floatFromInt(segment_index)) / @as(f32, @floatFromInt(shaft_segments));
 
-            // Gradient shading (lighter at top, darker at bottom)
-            const light_factor = 1.0 - (progress * 0.4); // 40% darkening from top to bottom
-            const segment_alpha = @as(u8, @intFromFloat(140 * light_factor));
+            // Classical entasis - slight swelling in the middle third
+            var entasis_factor: f32 = 1.0;
+            if (progress >= 0.3 and progress <= 0.7) {
+                const middle_progress = (progress - 0.3) / 0.4; // 0 to 1 in middle section
+                entasis_factor = 1.0 + (@sin(middle_progress * std.math.pi) * 0.15); // 15% max swelling
+            }
+
+            const current_width = @as(i32, @intFromFloat(@as(f32, @floatFromInt(base_pillar_width)) * entasis_factor));
+            const current_x = @as(i32, @intFromFloat(pillar_x + @as(f32, @floatFromInt(base_pillar_width - current_width)) / 2.0));
 
             const actual_segment_height = @min(segment_height, pillar_end_y - segment_y);
-            rl.drawRectangle(@as(i32, @intFromFloat(current_x)), segment_y, current_width, actual_segment_height, rl.Color{ .r = state.fg_color.r, .g = state.fg_color.g, .b = state.fg_color.b, .a = segment_alpha });
 
-            // Tapered highlights and shadows
-            const highlight_width = @divTrunc(@max(2, current_width), 8);
-            const shadow_width = @divTrunc(@max(2, current_width), 8);
+            // Main shaft segment with pixel-art edges
+            rl.drawRectangle(current_x, segment_y, current_width, actual_segment_height, col_base_color);
 
-            // Left highlight (lighter) with gradient
-            const highlight_alpha = @as(u8, @intFromFloat(180 * light_factor));
-            rl.drawRectangle(@as(i32, @intFromFloat(current_x)), segment_y, highlight_width, actual_segment_height, rl.Color{ .r = @min(255, state.fg_color.r + 70), .g = @min(255, state.fg_color.g + 70), .b = @min(255, state.fg_color.b + 70), .a = highlight_alpha });
+            // Pixel-art highlights and shadows for each segment
+            // Left highlight (1-2 pixel wide)
+            const highlight_width: i32 = if (current_width >= 20) 2 else 1;
+            rl.drawRectangle(current_x, segment_y, highlight_width, actual_segment_height, col_highlight);
 
-            // Right shadow (darker) with gradient
-            const shadow_alpha = @as(u8, @intFromFloat(180 * (1.0 - light_factor * 0.5))); // Shadows get stronger toward bottom
-            rl.drawRectangle(@as(i32, @intFromFloat(current_x)) + current_width - shadow_width, segment_y, shadow_width, actual_segment_height, rl.Color{ .r = state.fg_color.r / 2, .g = state.fg_color.g / 2, .b = state.fg_color.b / 2, .a = shadow_alpha });
+            // Right shadow (1-2 pixel wide)
+            const shadow_width: i32 = if (current_width >= 20) 2 else 1;
+            rl.drawRectangle(current_x + current_width - shadow_width, segment_y, shadow_width, actual_segment_height, col_shadow);
+
+            // Horizontal segment divider lines for texture (every other segment)
+            if (@rem(segment_index, 2) == 0 and segment_index > 0) {
+                rl.drawRectangle(current_x + 2, segment_y, current_width - 4, 1, col_shadow);
+            }
         }
 
-        // Draw multiple overlapping spiral patterns for rich carved stone texture
-        const spiral_center_x = pillar_x + @as(f32, @floatFromInt(base_pillar_width / 2));
-        const spiral_radius = @as(f32, @floatFromInt(base_pillar_width / 3));
-        const spiral_step = 1.5; // Finer vertical step for smoother spirals
-        const spiral_repeat = 14.0; // Slightly tighter vertical repeat distance
+        // Draw pixel-art fluting pattern (vertical grooves)
+        const flute_count = 3; // Simplified fluting for pixel art
+        const flute_spacing = @divTrunc(base_pillar_width, flute_count + 1);
 
-        // Draw multiple spirals with different phase offsets - increased density
-        const num_spirals = 5; // Increased from 3 to 5 for richer texture
-        var spiral_index: i32 = 0;
-        while (spiral_index < num_spirals) : (spiral_index += 1) {
-            const phase_offset = @as(f32, @floatFromInt(spiral_index)) * (2.0 * std.math.pi / @as(f32, @floatFromInt(num_spirals))); // Evenly distribute spirals
+        for (0..flute_count) |flute_index| {
+            const flute_x = @as(i32, @intFromFloat(pillar_x)) + @as(i32, @intCast(flute_index + 1)) * flute_spacing;
 
-            var y: f32 = @as(f32, @floatFromInt(pillar_start_y));
-            while (y < @as(f32, @floatFromInt(pillar_end_y))) : (y += spiral_step) {
-                // Calculate spiral angle based on height with phase offset and repeat
-                const base_angle = (y / spiral_repeat) * 2.0 * std.math.pi + phase_offset;
-                const angle = base_angle * 0.8; // Controls spiral tightness
-
-                // Calculate spiral positions
-                const spiral_x = spiral_center_x + @cos(angle) * spiral_radius;
-                const spiral_inner_x = spiral_center_x + @cos(angle) * (spiral_radius * 0.7);
-
-                // Create depth effect with varying opacity and size
-                const depth_factor = (@sin(angle + phase_offset) + 1.0) / 2.0; // 0.0 to 1.0
-                const spiral_alpha = @as(u8, @intFromFloat(60 + depth_factor * 100)); // 60 to 160 (reduced for overlapping)
-
-                // Vary the spiral intensity based on which spiral this is
-                const spiral_intensity = 1.0 - (@as(f32, @floatFromInt(spiral_index)) * 0.2); // First spiral strongest
-                const final_alpha = @as(u8, @intFromFloat(@as(f32, @floatFromInt(spiral_alpha)) * spiral_intensity));
-
-                // Outer spiral line (darker) - size varies with depth
-                const outer_size: i32 = if (depth_factor > 0.5) 2 else 1;
-                rl.drawRectangle(@as(i32, @intFromFloat(spiral_x)), @as(i32, @intFromFloat(y)), outer_size, outer_size, rl.Color{ .r = state.fg_color.r / 4, .g = state.fg_color.g / 4, .b = state.fg_color.b / 4, .a = final_alpha });
-
-                // Inner spiral line (lighter, for depth) - only draw for prominent parts
-                if (depth_factor > 0.3) {
-                    rl.drawRectangle(@as(i32, @intFromFloat(spiral_inner_x)), @as(i32, @intFromFloat(y)), 1, 1, rl.Color{ .r = @min(255, state.fg_color.r + 30), .g = @min(255, state.fg_color.g + 30), .b = @min(255, state.fg_color.b + 30), .a = final_alpha / 3 });
-                }
+            // Draw vertical flute line
+            var flute_y: i32 = pillar_start_y + 4;
+            while (flute_y < pillar_end_y - 4) : (flute_y += 3) {
+                rl.drawRectangle(flute_x, flute_y, 1, 2, col_shadow);
+                flute_y += 1; // Skip a pixel between flute segments for texture
             }
         }
     }
 
     // Hide COLOR and NEW GAME buttons in submit mode (especially for vertical orientation)
     const hide_side_buttons = state.game_state == .Submitting or state.game_state == .SubmitThanks;
+
+    // === BUTTON STACK (Top to Bottom): COLOR, NEW GAME, SUBMIT ===
 
     // COLOR button (top of stack) - hide in submit mode
     if (!hide_side_buttons) {
@@ -1165,26 +1223,6 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
         rl.drawText(color_text, color_text_x, color_text_y, color_font_size, state.bg_color);
     }
 
-    // SUBMIT button (bottom of stack, only for qualified users) - keep visible always when qualified
-    if (shouldShowSubmitButton(state)) {
-        rl.drawRectangleRec(layout.submit_btn, state.fg_color);
-        const submit_btn_text = "SUBMIT";
-        const submit_btn_text_width = rl.measureText(submit_btn_text, constants.small_font);
-        const submit_btn_text_x = @as(i32, @intFromFloat(layout.submit_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - submit_btn_text_width), 2);
-        const submit_btn_text_y = @as(i32, @intFromFloat(layout.submit_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
-        rl.drawText(submit_btn_text, submit_btn_text_x, submit_btn_text_y, constants.small_font, state.bg_color);
-    }
-
-    // CATEGORIES button (new button in the stack) - hide in submit mode
-    if (!hide_side_buttons) {
-        rl.drawRectangleRec(layout.categories_btn, state.fg_color);
-        const categories_text = "CATEGORIES";
-        const categories_text_width = rl.measureText(categories_text, constants.small_font);
-        const categories_text_x = @as(i32, @intFromFloat(layout.categories_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - categories_text_width), 2);
-        const categories_text_y = @as(i32, @intFromFloat(layout.categories_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
-        rl.drawText(categories_text, categories_text_x, categories_text_y, constants.small_font, state.bg_color);
-    }
-
     // NEW GAME button (middle of stack) - hide in submit mode
     if (!hide_side_buttons) {
         rl.drawRectangleRec(layout.answer_btn, state.fg_color);
@@ -1195,13 +1233,163 @@ pub fn drawAlwaysVisibleUI(state: *types.GameState, layout: UILayout) void {
         rl.drawText(new_game_text, new_game_text_x, new_game_text_y, constants.small_font, state.bg_color);
     }
 
-    // Draw tags for high-trust users during answering
-    if (state.user_trust >= 0.85 and state.game_state == .Answering) {
-        for (state.session.questions[state.session.current].tags) |tag| {
-            _ = tag;
-            // Optionally draw tags
-        }
+    // SUBMIT button (bottom of stack, only for qualified users) - keep visible always when qualified
+    if (shouldShowSubmitButton(state)) {
+        rl.drawRectangleRec(layout.submit_btn, state.fg_color);
+        const submit_btn_text = "SUBMIT";
+        const submit_btn_text_width = rl.measureText(submit_btn_text, constants.small_font);
+        const submit_btn_text_x = @as(i32, @intFromFloat(layout.submit_btn.x)) + @divTrunc((types.BOTTOM_BUTTON_WIDTH - submit_btn_text_width), 2);
+        const submit_btn_text_y = @as(i32, @intFromFloat(layout.submit_btn.y)) + @divTrunc((types.BOTTOM_BUTTON_HEIGHT - constants.small_font), 2);
+        rl.drawText(submit_btn_text, submit_btn_text_x, submit_btn_text_y, constants.small_font, state.bg_color);
     }
+}
+
+// --- Mode Selection Screen ---
+
+fn drawModeSelectionScreen(state: *types.GameState, layout: UILayout) void {
+    const constants = getResponsiveConstants();
+
+    // Check if we're in horizontal mode to adjust centering
+    const size = utils.get_canvas_size();
+    const aspect_ratio = @as(f32, @floatFromInt(size.w)) / @as(f32, @floatFromInt(size.h));
+    const is_horizontal = aspect_ratio > 1.2;
+
+    // Title - center within appropriate area
+    const title = "TruthByte";
+    const title_width = rl.measureText(title, constants.large_font);
+    const title_x = if (is_horizontal)
+        // Horizontal: center within question area (matching button centering)
+        @as(i32, @intFromFloat(layout.arcade_mode_btn.x)) + @divTrunc(200 - title_width, 2)
+    else
+        // Vertical: center across full screen
+        @divTrunc((layout.screen_width - title_width), 2);
+    const title_y = layout.progress_y - 60; // Move title higher for better spacing
+    rl.drawText(title, title_x, title_y, constants.large_font, state.fg_color);
+
+    // Draw mode buttons with better alignment under title
+    drawModeButtonSimple(layout.arcade_mode_btn, "ARCADE MODE", state, constants);
+    drawModeButtonSimple(layout.categories_mode_btn, "CATEGORIES", state, constants);
+
+    // Daily mode button - show appropriate text based on completion status
+    const daily_text = if (state.daily_completed_today) "DAILY REVIEW" else "DAILY MODE";
+    drawModeButtonSimple(layout.daily_mode_btn, daily_text, state, constants);
+
+    // Show streak info only if there's an actual streak
+    if (state.current_streak > 0 or state.best_streak > 0) {
+        var streak_buf: [64]u8 = undefined;
+        const streak_text = std.fmt.bufPrintZ(&streak_buf, "Current streak: {} | Best: {}", .{ state.current_streak, state.best_streak }) catch "Streak info";
+
+        const streak_width = rl.measureText(streak_text, constants.small_font);
+        const streak_x = if (is_horizontal)
+            // Horizontal: center within question area (matching button and title centering)
+            @as(i32, @intFromFloat(layout.arcade_mode_btn.x)) + @divTrunc(200 - streak_width, 2)
+        else
+            // Vertical: center across full screen
+            @divTrunc((layout.screen_width - streak_width), 2);
+        rl.drawText(streak_text, streak_x, layout.question_y + 260, constants.small_font, state.fg_color);
+    }
+}
+
+fn drawModeButtonSimple(button: rl.Rectangle, title: [*:0]const u8, state: *types.GameState, constants: anytype) void {
+    rl.drawRectangleRec(button, state.fg_color);
+
+    const title_slice = std.mem.span(title);
+    const title_width = rl.measureText(title_slice, constants.medium_font);
+    const title_x = @as(i32, @intFromFloat(button.x)) + @divTrunc(@as(i32, @intFromFloat(button.width)) - title_width, 2);
+    const title_y = @as(i32, @intFromFloat(button.y)) + @divTrunc(@as(i32, @intFromFloat(button.height)) - constants.medium_font, 2);
+    rl.drawText(title_slice, title_x, title_y, constants.medium_font, state.bg_color);
+}
+
+fn drawModeButton(button: rl.Rectangle, title: [*:0]const u8, description: [*:0]const u8, state: *types.GameState, constants: anytype) void {
+    rl.drawRectangleRec(button, state.fg_color);
+
+    const title_slice = std.mem.span(title);
+    const title_width = rl.measureText(title_slice, constants.medium_font);
+    const title_x = @as(i32, @intFromFloat(button.x)) + @divTrunc(@as(i32, @intFromFloat(button.width)) - title_width, 2);
+    const title_y = @as(i32, @intFromFloat(button.y)) + 10;
+    rl.drawText(title_slice, title_x, title_y, constants.medium_font, state.bg_color);
+
+    const desc_slice = std.mem.span(description);
+    const desc_width = rl.measureText(desc_slice, constants.small_font);
+    const desc_x = @as(i32, @intFromFloat(button.x)) + @divTrunc(@as(i32, @intFromFloat(button.width)) - desc_width, 2);
+    const desc_y = title_y + constants.medium_font + 5;
+    rl.drawText(desc_slice, desc_x, desc_y, constants.small_font, state.bg_color);
+}
+
+// --- Daily Review Screen ---
+
+fn drawDailyReviewScreen(state: *types.GameState, layout: UILayout) void {
+    const constants = getResponsiveConstants();
+
+    // Title
+    const title = "Daily Challenge Complete!";
+    const title_width = rl.measureText(title, constants.large_font);
+    const title_x = @divTrunc((layout.screen_width - title_width), 2);
+    rl.drawText(title, title_x, layout.progress_y, constants.large_font, state.fg_color);
+
+    // Score and rank
+    var score_buf: [64]u8 = undefined;
+    const rank_str = &[_]u8{ state.daily_rank[0], 0 }; // Convert to null-terminated string
+    const score_text = std.fmt.bufPrintZ(&score_buf, "Score: {d:.0}% | Rank: {s}", .{ state.daily_score, rank_str }) catch "Score: ?";
+    const score_width = rl.measureText(score_text, constants.medium_font);
+    const score_x = @divTrunc((layout.screen_width - score_width), 2);
+    rl.drawText(score_text, score_x, layout.question_y, constants.medium_font, state.fg_color);
+
+    // Streak info
+    var streak_buf: [64]u8 = undefined;
+    const streak_text = std.fmt.bufPrintZ(&streak_buf, "Current streak: {} | Best: {}", .{ state.current_streak, state.best_streak }) catch "Streak: ?";
+    const streak_width = rl.measureText(streak_text, constants.medium_font);
+    const streak_x = @divTrunc((layout.screen_width - streak_width), 2);
+    rl.drawText(streak_text, streak_x, layout.question_y + 40, constants.medium_font, state.fg_color);
+
+    // Motivational message based on performance
+    const motivational_text = if (state.daily_score >= 90.0)
+        "Excellent work! Perfect score!"
+    else if (state.daily_score >= 80.0)
+        "Great job! You're on fire!"
+    else if (state.daily_score >= 70.0)
+        "Good work! Keep it up!"
+    else if (state.daily_score >= 60.0)
+        "Not bad! Room for improvement."
+    else
+        "Better luck tomorrow!";
+
+    const motivational_width = rl.measureText(motivational_text, constants.small_font);
+    const motivational_x = @divTrunc((layout.screen_width - motivational_width), 2);
+    rl.drawText(motivational_text, motivational_x, layout.question_y + 80, constants.small_font, state.fg_color);
+
+    // Show user's responses (summary) - use actual counts from backend
+    var results_buf: [64]u8 = undefined;
+    const results_text = std.fmt.bufPrintZ(&results_buf, "You got {d}/{d} questions correct", .{ state.daily_correct_count, state.daily_total_questions }) catch "Results: ?";
+    const results_width = rl.measureText(results_text, constants.small_font);
+    const results_x = @divTrunc((layout.screen_width - results_width), 2);
+    rl.drawText(results_text, results_x, layout.question_y + 120, constants.small_font, state.fg_color);
+
+    // Additional info about daily challenges
+    const info_text = "Come back tomorrow for a new challenge!";
+    const info_width = rl.measureText(info_text, constants.small_font);
+    const info_x = @divTrunc((layout.screen_width - info_width), 2);
+    rl.drawText(info_text, info_x, layout.question_y + 160, constants.small_font, state.fg_color);
+
+    // Continue button - positioned with proper spacing below the last text
+    const button_y = layout.question_y + 200; // 40px buffer below last text
+    const continue_rect = rl.Rectangle{
+        .x = @floatFromInt(@divTrunc(layout.screen_width - 200, 2)),
+        .y = @floatFromInt(button_y),
+        .width = 200,
+        .height = 40,
+    };
+
+    rl.drawRectangleRec(continue_rect, state.fg_color);
+    const continue_text = "Continue";
+    const continue_width = rl.measureText(continue_text, constants.medium_font);
+    const continue_x = @as(i32, @intFromFloat(continue_rect.x)) + @divTrunc(@as(i32, @intFromFloat(continue_rect.width)) - continue_width, 2);
+    const continue_y = @as(i32, @intFromFloat(continue_rect.y)) + @divTrunc(@as(i32, @intFromFloat(continue_rect.height)) - constants.medium_font, 2);
+    rl.drawText(continue_text, continue_x, continue_y, constants.medium_font, state.bg_color);
+
+    // Update the layout's continue_rect for input handling
+    // This is a bit of a hack, but we need to update the layout for input handling
+    // In a better design, this would be handled differently
 }
 
 // --- Main Draw Function ---
@@ -1221,6 +1409,9 @@ pub fn draw(state: *types.GameState) void {
         .Loading, .Authenticating => {
             drawLoadingScreen(state, layout);
         },
+        .ModeSelection => {
+            drawModeSelectionScreen(state, layout);
+        },
         .CategorySelection => {
             drawCategorySelectionScreen(state, layout);
         },
@@ -1230,6 +1421,9 @@ pub fn draw(state: *types.GameState) void {
         .Finished => {
             drawFinishedScreen(state, layout);
         },
+        .DailyReview => {
+            drawDailyReviewScreen(state, layout);
+        },
         .Submitting => {
             drawSubmittingScreen(state, layout);
         },
@@ -1238,8 +1432,19 @@ pub fn draw(state: *types.GameState) void {
         },
     }
 
-    // Always-visible UI elements (only show for non-category-selection states)
-    if (state.game_state != .CategorySelection) {
+    // Always-visible UI elements - show sidebar in most states
+    const size = utils.get_canvas_size();
+    const aspect_ratio = @as(f32, @floatFromInt(size.w)) / @as(f32, @floatFromInt(size.h));
+    const is_horizontal = aspect_ratio > 1.2;
+
+    // Show sidebar in horizontal mode for most states, and always for answering/finished states
+    const should_show_sidebar = switch (state.game_state) {
+        .Loading, .Authenticating => false, // Never show sidebar during loading
+        .Answering, .Finished, .Submitting, .SubmitThanks => true, // Always show for game states
+        .ModeSelection, .CategorySelection, .DailyReview => is_horizontal, // Show in horizontal mode only
+    };
+
+    if (should_show_sidebar) {
         drawAlwaysVisibleUI(state, layout);
     }
 }

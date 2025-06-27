@@ -212,6 +212,59 @@ Resources:
             Fn::ImportValue: 
               Fn::Sub: ${Environment}-UsersTableName
 
+  FetchDailyQuestionsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-fetch-daily-questions
+      Handler: fetch_daily_questions.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: fetch-daily-questions.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+          QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionsTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
+
+  SubmitDailyAnswersFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-truthbyte-submit-daily-answers
+      Handler: submit_daily_answers.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: submit-daily-answers.zip
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: INFO
+          JWT_SECRET: !Ref JwtSecret
+          QUESTIONS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-QuestionsTableName
+          ANSWERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-AnswersTableName
+          USERS_TABLE_NAME: 
+            Fn::ImportValue: 
+              Fn::Sub: ${Environment}-UsersTableName
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -236,6 +289,7 @@ Resources:
                   - dynamodb:Scan
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
+                  - dynamodb:DescribeTable
                 Resource:
                   - Fn::ImportValue: 
                       Fn::Sub: ${Environment}-QuestionsTableArn
@@ -305,4 +359,16 @@ Outputs:
     Description: ARN of the get user submissions Lambda function
     Value: !GetAtt GetUserSubmissionsFunction.Arn
     Export:
-      Name: !Sub ${Environment}-GetUserSubmissionsFunctionArn 
+      Name: !Sub ${Environment}-GetUserSubmissionsFunctionArn
+
+  FetchDailyQuestionsFunctionArn:
+    Description: ARN of the fetch daily questions Lambda function
+    Value: !GetAtt FetchDailyQuestionsFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-FetchDailyQuestionsFunctionArn
+
+  SubmitDailyAnswersFunctionArn:
+    Description: ARN of the submit daily answers Lambda function
+    Value: !GetAtt SubmitDailyAnswersFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-SubmitDailyAnswersFunctionArn 

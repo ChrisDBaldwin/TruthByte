@@ -78,23 +78,37 @@ pub const QuestionResponse = struct {
     duration: f64 = 0.0,
 };
 
+pub const AnswerInput = struct {
+    user_id: []const u8,
+    question_id: []const u8,
+    answer: bool,
+    timestamp: i64,
+};
+
 pub const UserSessionResponse = struct {
     session_id: []const u8 = "",
     token: []const u8 = "",
     trust: f32 = 0.0,
-    invitable: bool = false,
-    responses: [7]QuestionResponse,
+    responses: [10]QuestionResponse,
     timestamp: i64,
 };
 
 pub const GameStateEnum = enum {
     Authenticating,
     Loading,
+    ModeSelection, // New state for mode selection
     CategorySelection, // New state for category browsing
-    Answering,
+    Answering, // state for Arcade mode
     Submitting,
     SubmitThanks,
     Finished,
+    DailyReview, // New state for daily mode review
+};
+
+pub const GameMode = enum {
+    Arcade,
+    Categories,
+    Daily,
 };
 
 pub const Orientation = enum { Vertical, Horizontal };
@@ -114,18 +128,17 @@ pub const Question = struct {
     title: [:0]const u8 = "", // Short label/headline (optional)
     passage: [:0]const u8 = "", // Supporting passage (optional)
     answer: bool, // True/False answer
-
-    // Backwards compatibility
-    tags: []const []const u8 = &.{}, // Deprecated: use categories instead
 };
 
 pub const Session = struct {
-    questions: [7]Question,
+    questions: [10]Question, // Increased to support daily mode (10 questions)
     current: usize = 0,
     correct: usize = 0,
     finished: bool = false,
     selected_category: []const u8 = "general", // Track selected category
     selected_difficulty: ?u8 = null, // Track selected difficulty filter
+    mode: GameMode = .Arcade, // Track which mode is being played
+    total_questions: usize = 7, // Actual number of questions (7 for arcade, 10 for daily)
 };
 
 pub const GameState = struct {
@@ -137,15 +150,33 @@ pub const GameState = struct {
     game_state: GameStateEnum = .Authenticating,
     orientation: Orientation = .Vertical,
     auth_initialized: bool = false,
-    session: Session = undefined,
+    session: Session = Session{
+        .questions = std.mem.zeroes([10]Question),
+        .current = 0,
+        .correct = 0,
+        .finished = false,
+        .selected_category = "general",
+        .selected_difficulty = null,
+        .mode = .Arcade,
+        .total_questions = 7,
+    },
     user_session: UserSessionResponse = UserSessionResponse{
-        .responses = undefined,
+        .responses = std.mem.zeroes([10]QuestionResponse),
         .timestamp = 0,
     },
     user_trust: f32 = 0.0,
     sessions_completed: u32 = 0,
-    invited_shown: bool = false,
     loading_start_time: i64 = 0,
+    // Daily mode state
+    current_streak: u32 = 0,
+    best_streak: u32 = 0,
+    daily_completed_today: bool = false,
+    daily_score: f32 = 0.0,
+    daily_rank: [2]u8 = [_]u8{ 'D', 0 }, // Null-terminated rank string
+    daily_correct_count: u32 = 0, // Actual correct answers from backend
+    daily_total_questions: u32 = 10, // Total questions in daily challenge
+    // Mode selection state
+    selected_mode: GameMode = .Arcade,
     // Category selection state
     available_categories: [20]Category = undefined, // Max 20 categories
     categories_count: usize = 0,
@@ -155,6 +186,9 @@ pub const GameState = struct {
     selected_category_name: [64]u8 = std.mem.zeroes([64]u8), // Selected category name buffer
     selected_category_len: usize = 0,
     selected_difficulty: ?u8 = null, // 1-5 difficulty filter
+    // Persistent storage for daily questions (10 questions)
+    daily_question_ids: [10][32]u8 = std.mem.zeroes([10][32]u8),
+    daily_question_texts: [10][512]u8 = std.mem.zeroes([10][512]u8),
     // UI state
     input_active: bool = false,
     input_buffer: [256]u8 = std.mem.zeroes([256]u8),
@@ -180,16 +214,16 @@ pub const GameState = struct {
 
 // --- Question Pool ---
 pub const question_pool = [_]Question{
-    Question{ .id = "q001", .categories = &.{ "food", "meme" }, .difficulty = 2, .question = "Pizza is a vegetable?", .title = "Pizza Fact", .passage = "Some US lawmakers once argued that pizza counts as a vegetable in school lunches.", .answer = false, .tags = &.{ "food", "meme" } },
-    Question{ .id = "q002", .categories = &.{ "science", "nature" }, .difficulty = 1, .question = "The sky is blue?", .title = "Sky Color", .passage = "", .answer = true, .tags = &.{ "science", "nature" } },
-    Question{ .id = "q003", .categories = &.{"math"}, .difficulty = 1, .question = "2+2=5?", .title = "Math Check", .passage = "", .answer = false, .tags = &.{"math"} },
-    Question{ .id = "q004", .categories = &.{ "science", "physics" }, .difficulty = 2, .question = "Water boils at 100C?", .title = "Boiling Point", .passage = "", .answer = true, .tags = &.{ "science", "physics" } },
-    Question{ .id = "q005", .categories = &.{ "animals", "meme" }, .difficulty = 1, .question = "Cats can fly?", .title = "Cat Fact", .passage = "", .answer = false, .tags = &.{ "animals", "meme" } },
-    Question{ .id = "q006", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Earth is round?", .title = "Earth Shape", .passage = "", .answer = true, .tags = &.{ "science", "geography" } },
-    Question{ .id = "q007", .categories = &.{"science"}, .difficulty = 1, .question = "Fire is cold?", .title = "Fire Fact", .passage = "", .answer = false, .tags = &.{"science"} },
-    Question{ .id = "q008", .categories = &.{"animals"}, .difficulty = 1, .question = "Fish can swim?", .title = "Fish Fact", .passage = "", .answer = true, .tags = &.{"animals"} },
-    Question{ .id = "q009", .categories = &.{ "animals", "biology" }, .difficulty = 3, .question = "Birds are mammals?", .title = "Bird Fact", .passage = "", .answer = false, .tags = &.{ "animals", "biology" } },
-    Question{ .id = "q010", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Sun rises in the east?", .title = "Sunrise", .passage = "", .answer = true, .tags = &.{ "science", "geography" } },
+    Question{ .id = "q001", .categories = &.{ "food", "meme" }, .difficulty = 2, .question = "Pizza is a vegetable?", .title = "Pizza Fact", .passage = "Some US lawmakers once argued that pizza counts as a vegetable in school lunches.", .answer = false },
+    Question{ .id = "q002", .categories = &.{ "science", "nature" }, .difficulty = 1, .question = "The sky is blue?", .title = "Sky Color", .passage = "", .answer = true },
+    Question{ .id = "q003", .categories = &.{"math"}, .difficulty = 1, .question = "2+2=5?", .title = "Math Check", .passage = "", .answer = false },
+    Question{ .id = "q004", .categories = &.{ "science", "physics" }, .difficulty = 2, .question = "Water boils at 100C?", .title = "Boiling Point", .passage = "", .answer = true },
+    Question{ .id = "q005", .categories = &.{ "animals", "meme" }, .difficulty = 1, .question = "Cats can fly?", .title = "Cat Fact", .passage = "", .answer = false },
+    Question{ .id = "q006", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Earth is round?", .title = "Earth Shape", .passage = "", .answer = true },
+    Question{ .id = "q007", .categories = &.{"science"}, .difficulty = 1, .question = "Fire is cold?", .title = "Fire Fact", .passage = "", .answer = false },
+    Question{ .id = "q008", .categories = &.{"animals"}, .difficulty = 1, .question = "Fish can swim?", .title = "Fish Fact", .passage = "", .answer = true },
+    Question{ .id = "q009", .categories = &.{ "animals", "biology" }, .difficulty = 3, .question = "Birds are mammals?", .title = "Bird Fact", .passage = "", .answer = false },
+    Question{ .id = "q010", .categories = &.{ "science", "geography" }, .difficulty = 2, .question = "Sun rises in the east?", .title = "Sunrise", .passage = "", .answer = true },
 };
 
 // --- JSON Types for API Response ---
@@ -201,8 +235,6 @@ pub const QuestionJSON = struct {
     answer: bool,
     categories: [][]const u8 = &.{},
     difficulty: u8 = 3,
-    // Backwards compatibility
-    tags: [][]const u8 = &.{},
 
     pub fn toQuestion(self: QuestionJSON, allocator: std.mem.Allocator) !Question {
         // Use allocator to create proper null-terminated strings
@@ -219,7 +251,6 @@ pub const QuestionJSON = struct {
             .answer = self.answer,
             .categories = &.{}, // TODO: Convert categories if needed
             .difficulty = self.difficulty,
-            .tags = &.{}, // TODO: Convert tags if needed for backwards compatibility
         };
     }
 };

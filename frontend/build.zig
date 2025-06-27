@@ -16,8 +16,6 @@ pub fn build(b: *std.Build) !void {
     const is_wasm = target.result.cpu.arch.isWasm();
 
     if (is_wasm and b.sysroot == null) {
-        //const emsdk_dep = b.dependency("emsdk", .{}); // TODO: this is not working, come back to this later
-        //b.sysroot = emsdk_dep.path("upstream/emscripten").getPath(b);
         const emsdk_root = std.process.getEnvVarOwned(b.allocator, "EMSDK") catch null;
         if (emsdk_root) |p| {
             b.sysroot = try std.fs.path.join(b.allocator, &.{ p, "upstream", "emscripten" });

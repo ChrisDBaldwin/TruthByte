@@ -110,6 +110,53 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 }
 ```
 
+#### GET `/fetch-daily-questions`
+**Purpose**: Retrieve deterministic daily questions for the daily mode challenge
+**Authentication**: Bearer token required
+
+**Features:**
+- **Deterministic Selection**: Same 10 questions for all users on a given date
+- **Date-based Seeding**: Uses cryptographic hash of date for consistent randomization
+- **Progress Tracking**: Returns user's daily progress and streak information
+- **Difficulty Filtering**: Excludes hardest questions (difficulty 5) from daily challenges
+
+**Example Request:**
+```http
+GET /fetch-daily-questions
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
+```
+
+**Response:**
+```json
+{
+  "questions": [
+    {
+      "id": "q001",
+      "question": "Does ethanol take more energy to make than it produces?",
+      "title": "Ethanol fuel energy balance",
+      "passage": "All biomass goes through at least some of these steps...",
+      "answer": false,
+      "categories": ["science", "energy"],
+      "difficulty": 3
+    }
+  ],
+  "date": "2024-01-15",
+  "daily_progress": {
+    "completed": false,
+    "score": 0,
+    "answers": [],
+    "completed_at": null
+  },
+  "streak_info": {
+    "current_streak": 5,
+    "best_streak": 12,
+    "streak_eligible": true
+  },
+  "total_questions": 10
+}
+```
+
 #### POST `/submit-answers`
 **Purpose**: Submit user answers and receive trust score  
 **Authentication**: Bearer token required
@@ -235,6 +282,55 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
   "success": false,
   "error": "Input validation failed",
   "details": ["Question contains suspicious content"]
+}
+```
+
+#### POST `/submit-daily-answers`
+**Purpose**: Submit answers for the daily mode challenge
+**Authentication**: Bearer token required
+
+**Features:**
+- **Score Calculation**: Calculates percentage score and letter rank (S, A, B, C, D)
+- **Streak Management**: Updates user's daily streak based on performance (≥70% required)
+- **Progress Tracking**: Stores completion status and prevents duplicate submissions
+- **Rank System**: S (100%), A (80-99%), B (70-79%), C (60-69%), D (<60%)
+
+**Request Body:**
+```json
+{
+  "answers": [
+    {
+      "question_id": "q001",
+      "answer": true,
+      "timestamp": 1705324800
+    },
+    {
+      "question_id": "q002", 
+      "answer": false,
+      "timestamp": 1705324820
+    }
+  ],
+  "date": "2024-01-15"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "score": {
+    "correct_count": 8,
+    "total_questions": 10,
+    "score_percentage": 80.0,
+    "rank": "A",
+    "streak_eligible": true
+  },
+  "streak_info": {
+    "current_streak": 6,
+    "best_streak": 12,
+    "streak_continued": true
+  },
+  "date": "2024-01-15"
 }
 ```
 

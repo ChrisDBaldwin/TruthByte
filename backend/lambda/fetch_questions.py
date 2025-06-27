@@ -5,7 +5,7 @@ import os
 import sys
 from typing import Dict, Any
 from decimal import Decimal
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 
 # Add the shared directory to Python path for Lambda imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
@@ -16,8 +16,8 @@ from user_utils import get_or_create_user
 # Initialize DynamoDB resource and tables
 # boto3.resource provides a higher-level interface than boto3.client
 dynamodb = boto3.resource('dynamodb')
-questions_table_name = os.environ.get('QUESTIONS_TABLE_NAME', 'truthbyte-questions')
-categories_table_name = os.environ.get('QUESTION_CATEGORIES_TABLE_NAME', 'truthbyte-question-categories')
+questions_table_name = os.environ.get('QUESTIONS_TABLE_NAME', 'dev-truthbyte-questions')
+categories_table_name = os.environ.get('QUESTION_CATEGORIES_TABLE_NAME', 'dev-truthbyte-question-categories')
 questions_table = dynamodb.Table(questions_table_name)
 
 # Handle the case where the categories table might not exist yet (backwards compatibility)
@@ -26,9 +26,11 @@ try:
     # Test if table exists by checking its status
     categories_table.table_status
     USE_CATEGORIES_TABLE = True
-except Exception:
+    print(f"Categories table '{categories_table_name}' is available")
+except Exception as e:
     USE_CATEGORIES_TABLE = False
     categories_table = None
+    print(f"Categories table '{categories_table_name}' is not available: {e}")
 
 class DecimalEncoder(json.JSONEncoder):
     """
@@ -125,6 +127,11 @@ def lambda_handler(event, context):
         # Get category from query params, default to 'general' for efficient querying
         category = query_params.get('category', 'general')
         
+        # Debug: Log the actual category parameter received
+        print(f"Received category parameter: '{category}' (type: {type(category)})")
+        print(f"Query params: {query_params}")
+        print(f"Requested {num_questions} questions for category: {category}")
+        
         # Get difficulty filter from query params (optional)
         difficulty = query_params.get('difficulty')
         if difficulty:
@@ -135,26 +142,79 @@ def lambda_handler(event, context):
             except (ValueError, TypeError):
                 difficulty = None
         
-        # Query the main questions table directly with category filter
-        # Updated schema stores category directly in questions table
-        scan_params = {
-            'Limit': num_questions * 3  # Get more items to allow for filtering and randomization
-        }
-        
-        # Filter by category - the data shows categories stored as a list
+        # Use DynamoDB scan with FilterExpression for category filtering
         if category != 'general':
+            print(f"Filtering for specific category: {category}")
             
+            # Use FilterExpression to filter by category during scan
+            # This handles both simple string arrays and DynamoDB typed format
+            scan_params = {
+                'FilterExpression': Attr('categories').contains(category),
+                'Limit': num_questions * 50  # Much higher limit since we're filtering
+            }
             
-            # Use boto3's Attr for proper DynamoDB list contains operation
-            # This handles the DynamoDB list format correctly
-            # Data shows categories stored as: "categories": {"L": [{"S": "business"}]}
-            filter_expression = Attr('categories').contains(category)
+            try:
+                response = questions_table.scan(**scan_params)
+                items = response.get('Items', [])
+                print(f"DynamoDB FilterExpression scan returned {len(items)} items for category: {category}")
+                
+                # If we didn't get enough items, try multiple scans
+                scan_count = 1
+                while len(items) < num_questions and scan_count < 3:
+                    print(f"Not enough items ({len(items)}), performing additional scan #{scan_count + 1}")
+                    
+                    # Continue scanning from where we left off
+                    if 'LastEvaluatedKey' in response:
+                        scan_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
+                    else:
+                        # No more items to scan, break
+                        break
+                        
+                    response = questions_table.scan(**scan_params)
+                    additional_items = response.get('Items', [])
+                    items.extend(additional_items)
+                    scan_count += 1
+                    print(f"Additional scan returned {len(additional_items)} items, total now: {len(items)}")
+                
+            except Exception as e:
+                print(f"Error with FilterExpression scan: {e}")
+                print("Falling back to full scan with Python filtering")
+                # Fall back to full scan with Python filtering
+                response = questions_table.scan(Limit=num_questions * 50)
+                all_items = response.get('Items', [])
+                
+                # Filter in Python
+                items = []
+                for item in all_items:
+                    categories = item.get('categories', [])
+                    if isinstance(categories, list):
+                        # Check if category matches any item in the categories list
+                        for cat in categories:
+                            if isinstance(cat, str) and cat == category:
+                                items.append(item)
+                                break
+                            elif isinstance(cat, dict) and cat.get('S') == category:
+                                items.append(item)
+                                break
+                
+                print(f"Python filtering found {len(items)} items for category: {category}")
+        else:
+            print(f"Using main table scan for general category")
+            # For 'general' category, scan without filtering
+            scan_params = {
+                'Limit': num_questions * 10
+            }
             
-            scan_params['FilterExpression'] = filter_expression
+            response = questions_table.scan(**scan_params)
+            items = response.get('Items', [])
         
-        # Scan the questions table
-        response = questions_table.scan(**scan_params)
-        items = response.get('Items', [])
+        # Debug logging for troubleshooting
+        print(f"Retrieved {len(items)} items for category: {category}")
+        if items and len(items) > 0:
+            # Log first item structure for debugging
+            sample_item = items[0]
+            print(f"Sample item ID: {sample_item.get('id', 'unknown')}")
+            print(f"Sample item categories: {sample_item.get('categories', 'NOT_FOUND')}")
         
         # Filter by difficulty if specified
         if difficulty is not None:
@@ -170,7 +230,16 @@ def lambda_handler(event, context):
                     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-User-ID"
                 },
                 'body': json.dumps({
-                    'error': f'No questions found for category: {category}' + (f' with difficulty: {difficulty}' if difficulty else '')
+                    'error': f'No questions found for category: {category}' + (f' with difficulty: {difficulty}' if difficulty else ''),
+                    'debug_info': {
+                        'scan_limit': scan_params.get('Limit', 'none'),
+                        'filter_applied': 'FilterExpression' in scan_params,
+                        'total_scanned_items': len(response.get('Items', [])),
+                        'categories_table_available': USE_CATEGORIES_TABLE,
+                        'requested_category': category,
+                        'category_is_general': category == 'general',
+                        'python_filter_applied': category != 'general'
+                    }
                 })
             }
         
@@ -205,6 +274,21 @@ def lambda_handler(event, context):
         print(f"Event: {json.dumps(event)}")
         print(f"Categories table exists: {USE_CATEGORIES_TABLE}")
         
+        # Capture more debugging context if available
+        debug_context = {
+            "categories_table_available": USE_CATEGORIES_TABLE,
+            "category_requested": query_params.get('category', 'general') if 'query_params' in locals() else 'unknown',
+            "exception_type": type(e).__name__,
+            "exception_details": str(e)
+        }
+        
+        # Add scan parameters info if available
+        if 'scan_params' in locals():
+            debug_context["scan_params_keys"] = list(scan_params.keys())
+            debug_context["has_filter_expression"] = 'FilterExpression' in scan_params
+        
+        print(f"Debug context: {json.dumps(debug_context)}")
+        
         # Return a proper error response with CORS headers
         # API Gateway requires specific response format
         return {
@@ -217,9 +301,6 @@ def lambda_handler(event, context):
             },
             "body": json.dumps({
                 "error": f"Unexpected error in lambda handler: {str(e)}",
-                "debug_info": {
-                    "categories_table_available": USE_CATEGORIES_TABLE,
-                    "category_requested": query_params.get('category', 'general') if 'query_params' in locals() else 'unknown'
-                }
+                "debug_info": debug_context
             })
         } 
