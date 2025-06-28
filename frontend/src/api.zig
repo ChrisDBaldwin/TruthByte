@@ -167,9 +167,13 @@ export fn on_auth_complete(success: i32) callconv(.C) void {
         state.auth_initialized = true;
         startUserDataFetch(state);
     } else {
-        // Authentication failed - skip user data fetch and go to mode selection
+        // Authentication failed - initialize offline state
+        std.debug.print("Authentication failed, initializing offline state\n", .{});
         state.loading_message = "Authentication failed. Using offline mode.";
         state.auth_initialized = false;
+        state.daily_completed_today = false; // Ensure daily mode is available in offline mode
+        state.current_streak = 0;
+        state.best_streak = 0;
         startModeSelection(state);
     }
 }
@@ -217,75 +221,62 @@ export fn on_user_data_received(success: i32, data_ptr: [*]const u8, data_len: u
 
         // Extract daily progress if available
         if (response.object.get("daily_progress")) |progress_value| {
-
             // Get current date from JavaScript
             const date_str = utils.js.get_current_date_slice();
 
-            // Debug: print all available keys in daily_progress
+            // Debug logging
+            std.debug.print("Daily progress found. Is object: {}, Is empty: {}\n", .{
+                progress_value == .object,
+                if (progress_value == .object) progress_value.object.count() == 0 else false,
+            });
 
-            if (progress_value.object.get(date_str)) |today_progress| {
-                if (today_progress.object.get("completed")) |completed_value| {
-                    state.daily_completed_today = completed_value.bool;
-                }
+            // Handle empty object case
+            if (progress_value == .object and progress_value.object.count() == 0) {
+                std.debug.print("Empty daily progress object, skipping\n", .{});
+                state.daily_completed_today = false;
+            } else if (progress_value.object.get(date_str)) |today_progress| {
+                std.debug.print("Found progress for today\n", .{});
+                if (today_progress.object.get("answers")) |answers_value| {
+                    if (answers_value == .array and answers_value.array.items.len > 0) {
+                        std.debug.print("Found {} answers for today\n", .{answers_value.array.items.len});
+                        state.daily_completed_today = true;
 
-                // Score is an integer representing percentage (e.g., 80 = 80%)
-                if (today_progress.object.get("score")) |score_value| {
-                    if (score_value == .integer) {
-                        state.daily_score = @as(f32, @floatFromInt(score_value.integer));
-                    }
-                }
+                        // Calculate stats
+                        var correct: u32 = 0;
+                        const total: u32 = answers_value.array.items.len;
 
-                // Extract actual question counts
-                if (today_progress.object.get("correct_count")) |correct_value| {
-                    if (correct_value == .integer) {
-                        state.daily_correct_count = @as(u32, @intCast(correct_value.integer));
-                    }
-                }
-
-                if (today_progress.object.get("total_questions")) |total_value| {
-                    if (total_value == .integer) {
-                        state.daily_total_questions = @as(u32, @intCast(total_value.integer));
-                    }
-                }
-
-                if (today_progress.object.get("rank")) |rank_value| {
-                    if (rank_value == .string) {
-                        const rank_str = rank_value.string;
-                        if (rank_str.len > 0) {
-                            state.daily_rank[0] = rank_str[0];
-                            state.daily_rank[1] = 0;
+                        // Count correct answers
+                        for (answers_value.array.items) |answer| {
+                            if (answer.object.get("is_correct")) |is_correct| {
+                                if (is_correct == .bool and is_correct.bool) {
+                                    correct += 1;
+                                }
+                            }
                         }
+
+                        state.daily_correct_count = correct;
+                        state.daily_total_questions = total;
+
+                        // Calculate score and rank based on counts
+                        if (total > 0) {
+                            state.daily_score = (@as(f32, @floatFromInt(correct)) / @as(f32, @floatFromInt(total))) * 100.0;
+                        } else {
+                            state.daily_score = 0.0;
+                        }
+
+                        const rank_char: u8 = if (state.daily_score >= 90.0)
+                            'A'
+                        else if (state.daily_score >= 80.0)
+                            'B'
+                        else if (state.daily_score >= 70.0)
+                            'C'
+                        else if (state.daily_score >= 60.0)
+                            'D'
+                        else
+                            'F';
+                        state.daily_rank[0] = rank_char;
+                        state.daily_rank[1] = 0;
                     }
-                }
-            } else {}
-        } else {}
-
-        // Also try to extract daily data from root level (in case it's not nested under daily_progress)
-        if (response.object.get("correct_answers")) |correct_value| {
-            const correct_answers = @as(f32, @floatCast(correct_value.float));
-            const total_questions = if (response.object.get("total_questions_answered")) |total| @as(f32, @floatCast(total.float)) else if (response.object.get("total_questions")) |total| @as(f32, @floatCast(total.float)) else 10.0;
-
-            if (total_questions > 0) {
-                const calculated_score = (correct_answers / total_questions) * 100.0;
-
-                // Only use this if we don't already have daily score data
-                if (state.daily_score == 0.0) {
-                    state.daily_score = calculated_score;
-                    state.daily_completed_today = true; // If we have score data, it means completed
-
-                    // Calculate rank based on score
-                    const rank_char: u8 = if (state.daily_score >= 90.0)
-                        'A'
-                    else if (state.daily_score >= 80.0)
-                        'B'
-                    else if (state.daily_score >= 70.0)
-                        'C'
-                    else if (state.daily_score >= 60.0)
-                        'D'
-                    else
-                        'F';
-                    state.daily_rank[0] = rank_char;
-                    state.daily_rank[1] = 0;
                 }
             }
         }
@@ -295,9 +286,15 @@ export fn on_user_data_received(success: i32, data_ptr: [*]const u8, data_len: u
         // Handle error - just continue without user data
         const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
         std.debug.print("Failed to fetch user data: {s}\n", .{error_msg});
-        // Initialize streak to 0 if fetch failed
+        // Initialize streak and daily mode state to 0/false if fetch failed
         state.current_streak = 0;
         state.best_streak = 0;
+        state.daily_completed_today = false;
+        state.daily_correct_count = 0;
+        state.daily_total_questions = 0;
+        state.daily_score = 0.0;
+        state.daily_rank[0] = 'F';
+        state.daily_rank[1] = 0;
     }
 
     // After processing user data (or error), go to mode selection
@@ -639,17 +636,65 @@ fn parseDailyQuestionsFromJson(state: *types.GameState, json_str: []const u8) bo
 
     // Extract daily progress
     if (response.object.get("daily_progress")) |progress_value| {
-        if (progress_value.object.get("completed")) |completed_value| {
-            state.daily_completed_today = completed_value.bool;
+        // Get current date from JavaScript
+        const date_str = utils.js.get_current_date_slice();
+
+        // Debug logging
+        std.debug.print("Daily progress found in questions response. Is object: {}, Is empty: {}\n", .{
+            progress_value == .object,
+            if (progress_value == .object) progress_value.object.count() == 0 else false,
+        });
+
+        // Skip if it's an empty object
+        if (progress_value == .object and progress_value.object.count() == 0) {
+            std.debug.print("Empty daily progress object in questions response, skipping\n", .{});
+            state.daily_completed_today = false;
+            return true;
         }
-        if (progress_value.object.get("score")) |score_value| {
-            state.daily_score = @floatCast(score_value.float);
-        }
-        if (progress_value.object.get("rank")) |rank_value| {
-            const rank_str = rank_value.string;
-            if (rank_str.len > 0) {
-                state.daily_rank[0] = rank_str[0];
-                state.daily_rank[1] = 0;
+
+        // Check for answers for today
+        if (progress_value.object.get(date_str)) |today_progress| {
+            std.debug.print("Found progress for today in questions response\n", .{});
+            if (today_progress.object.get("answers")) |answers_value| {
+                if (answers_value == .array and answers_value.array.items.len > 0) {
+                    state.daily_completed_today = true;
+
+                    // Calculate stats
+                    var correct: u32 = 0;
+                    const total: u32 = answers_value.array.items.len;
+
+                    // Count correct answers
+                    for (answers_value.array.items) |answer| {
+                        if (answer.object.get("is_correct")) |is_correct| {
+                            if (is_correct == .bool and is_correct.bool) {
+                                correct += 1;
+                            }
+                        }
+                    }
+
+                    state.daily_correct_count = correct;
+                    state.daily_total_questions = total;
+
+                    // Calculate score and rank based on counts
+                    if (total > 0) {
+                        state.daily_score = (@as(f32, @floatFromInt(correct)) / @as(f32, @floatFromInt(total))) * 100.0;
+                    } else {
+                        state.daily_score = 0.0;
+                    }
+
+                    const rank_char: u8 = if (state.daily_score >= 90.0)
+                        'A'
+                    else if (state.daily_score >= 80.0)
+                        'B'
+                    else if (state.daily_score >= 70.0)
+                        'C'
+                    else if (state.daily_score >= 60.0)
+                        'D'
+                    else
+                        'F';
+                    state.daily_rank[0] = rank_char;
+                    state.daily_rank[1] = 0;
+                }
             }
         }
     }
@@ -739,18 +784,19 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
     var fba = std.heap.FixedBufferAllocator.init(&global_json_buffer);
     const allocator = fba.allocator();
 
-    // Create answers array
-    var answers = std.ArrayList(types.AnswerInput).init(allocator);
+    // Create minimal answers array - just question IDs and answers
+    var answers = std.ArrayList(struct {
+        question_id: []const u8,
+        answer: bool,
+    }).init(allocator);
     defer answers.deinit();
 
     for (0..state.session.total_questions) |i| {
         const response = state.user_session.responses[i];
         if (response.answer != null) {
-            answers.append(types.AnswerInput{
-                .user_id = "", // Will be filled by backend from headers
+            answers.append(.{
                 .question_id = response.question_id,
                 .answer = response.answer.?,
-                .timestamp = response.start_time,
             }) catch |err| {
                 std.debug.print("Failed to append answer {}: {any}\n", .{ i, err });
                 continue;
@@ -758,13 +804,9 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
         }
     }
 
-    // Get current date from JavaScript (much simpler and more reliable!)
-    const date_str = utils.js.get_current_date_slice();
-
-    // Create submission object
+    // Create minimal submission object - just the answers
     const submission = .{
         .answers = answers.items,
-        .date = date_str,
     };
 
     const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch |err| {
@@ -785,10 +827,34 @@ export fn on_daily_answers_submitted(success: i32, data_ptr: [*]const u8, data_l
     const state = g_state.?;
 
     if (success == 1) {
-        // Successfully submitted - the daily stats should already be loaded from user data
-        // No need to parse response here, just mark as completed and go to review
-        state.game_state = .DailyReview;
+        // Successfully submitted - we have the results from the session.
+        // Update the state for the review screen.
         state.daily_completed_today = true;
+        state.daily_correct_count = @as(u32, @intCast(state.session.correct));
+        state.daily_total_questions = @as(u32, @intCast(state.session.total_questions));
+
+        if (state.daily_total_questions > 0) {
+            state.daily_score = (@as(f32, @floatFromInt(state.daily_correct_count)) / @as(f32, @floatFromInt(state.daily_total_questions))) * 100.0;
+        } else {
+            state.daily_score = 0.0;
+        }
+
+        // Calculate rank
+        const rank_char: u8 = if (state.daily_score >= 90.0)
+            'A'
+        else if (state.daily_score >= 80.0)
+            'B'
+        else if (state.daily_score >= 70.0)
+            'C'
+        else if (state.daily_score >= 60.0)
+            'D'
+        else
+            'F';
+        state.daily_rank[0] = rank_char;
+        state.daily_rank[1] = 0;
+
+        // Now go to review screen
+        state.game_state = .DailyReview;
     } else {
         // Handle error - go to finished state instead of crashing
         const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
