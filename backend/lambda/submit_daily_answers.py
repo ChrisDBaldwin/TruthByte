@@ -71,17 +71,28 @@ def lambda_handler(event, context):
     """
     Handle daily mode answer submission.
     
-    Expected body format:
+    Expected body format (from frontend):
     {
         "answers": [
             {
                 "question_id": "q001",
                 "answer": true,
                 "timestamp": 1234567890
-            },
-            ...
+            }
+        ]
+    }
+
+    Stored in daily_progress[date] as:
+    {
+        "answers": [
+            {
+                "question_id": "q001",
+                "answer": true,
+                "is_correct": true,
+                "timestamp": 1234567890
+            }
         ],
-        "date": "2024-01-15"
+        "completed_at": "2024-01-15T12:34:56.789Z"
     }
     """
     try:
@@ -209,7 +220,6 @@ def lambda_handler(event, context):
                 'timestamp': answer['timestamp'],
                 'mode': 'daily',
                 'date': date_str,
-                'correct_answer': questions_data.get(answer['question_id'], {}).get('answer', False),
                 'is_correct': answer['answer'] == questions_data.get(answer['question_id'], {}).get('answer', False)
             }
             
@@ -227,15 +237,20 @@ def lambda_handler(event, context):
         
         # Update user's daily progress
         current_time = datetime.now(timezone.utc).isoformat()
+        
+        # Enrich answers with is_correct flag
+        enriched_answers = []
+        for answer in answers:
+            enriched_answers.append({
+                'question_id': answer['question_id'],
+                'answer': answer['answer'],
+                'timestamp': answer['timestamp'],
+                'is_correct': answer['answer'] == questions_data.get(answer['question_id'], {}).get('answer', False)
+            })
+
         daily_progress[date_str] = {
-            'completed': True,
-            'score': score_data['score_percentage'],
-            'rank': score_data['rank'],
-            'correct_count': score_data['correct_count'],
-            'total_questions': score_data['total_questions'],
-            'answers': answers,
-            'completed_at': current_time,
-            'streak_eligible': score_data['streak_eligible']
+            'answers': enriched_answers,
+            'completed_at': current_time
         }
         
         # Calculate streak
@@ -264,15 +279,12 @@ def lambda_handler(event, context):
                 SET daily_progress = :daily_progress,
                     current_daily_streak = :current_streak,
                     best_daily_streak = :best_streak,
-                    total_daily_games = if_not_exists(total_daily_games, :zero) + :one,
                     last_active = :last_active
             """,
             ExpressionAttributeValues={
                 ':daily_progress': daily_progress,
                 ':current_streak': Decimal(str(streak_count)),
                 ':best_streak': Decimal(str(new_best)),
-                ':zero': Decimal('0'),
-                ':one': Decimal('1'),
                 ':last_active': current_time
             }
         )

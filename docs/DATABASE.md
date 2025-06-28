@@ -175,42 +175,33 @@ Billing: Pay-per-request
 ### 7. Users Table (NEW - Daily Mode)
 **Table Name**: `{environment}-truthbyte-users`
 
-```
-Partition Key: user_id (String)
-Billing: Pay-per-request
-```
+The user table stores user profiles and progress information.
 
-**Attributes:**
 ```json
 {
-  "user_id": "12345678-1234-4xxx-yxxx-xxxxxxxxxxxx", // UUID v4 user identifier
-  "created_at": 1710000000,                          // User creation timestamp
-  "total_games": 42,                                 // Total arcade games played
-  "trust_score": 0.85,                               // Current trust score
-  
-  // Daily Mode Fields (NEW)
-  "current_daily_streak": 7,                         // Current consecutive daily completions
-  "best_daily_streak": 15,                           // Highest streak achieved
-  "total_daily_games": 23,                           // Total daily challenges completed
-  "daily_progress": {                                // Daily completion tracking
-    "2024-01-15": {
-      "completed": true,
-      "score": 80.0,                                 // Percentage score
-      "rank": "A",                                   // Letter grade (S, A, B, C, D)
-      "correct_count": 8,                            // Questions answered correctly
-      "total_questions": 10,                         // Total questions in challenge
-      "answers": [...],                              // Individual answer records
-      "completed_at": 1705324800                     // Completion timestamp
+    "user_id": "uuid-string",                            // Primary key
+    "trust_score": 42,                                   // User's trust score
+    "created_at": "2024-01-15T12:34:56.789Z",           // Account creation timestamp
+    "last_active": "2024-01-15T12:34:56.789Z",          // Last activity timestamp
+    "daily_progress": {                                  // Daily challenge progress by date
+        "2024-01-15": {
+            "answers": [
+                {
+                    "question_id": "q001",
+                    "answer": true,
+                    "is_correct": true,
+                    "timestamp": 1234567890
+                }
+            ],
+            "completed_at": "2024-01-15T12:34:56.789Z"
+        }
     },
-    "2024-01-16": {
-      "completed": false,
-      "score": 0,
-      "answers": [],
-      "completed_at": null
-    }
-  }
+    "current_daily_streak": 5,                           // Current daily challenge streak
+    "best_daily_streak": 10                             // Best daily challenge streak achieved
 }
 ```
+
+Note: Statistics like total questions answered, correct answers, and total daily games can be calculated from the answers table and daily progress data.
 
 **Usage Pattern:**
 - **User Profile**: Get complete user data including daily progress

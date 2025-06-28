@@ -334,6 +334,37 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 }
 ```
 
+#### GET `/user`
+
+Get user profile and progress information.
+
+**Response:**
+```json
+{
+    "user_id": "uuid-string",
+    "trust_score": 42,
+    "created_at": "2024-01-15T12:34:56.789Z",
+    "last_active": "2024-01-15T12:34:56.789Z",
+    "daily_progress": {
+        "2024-01-15": {
+            "answers": [
+                {
+                    "question_id": "q001",
+                    "answer": true,
+                    "is_correct": true,
+                    "timestamp": 1234567890
+                }
+            ],
+            "completed_at": "2024-01-15T12:34:56.789Z"
+        }
+    },
+    "current_daily_streak": 5,
+    "best_daily_streak": 10
+}
+```
+
+Note: Statistics like total questions answered, correct answers, and total daily games can be calculated from the answers table and daily progress data.
+
 ### 🐛 Debug Endpoints
 
 #### GET `/auth-ping`
