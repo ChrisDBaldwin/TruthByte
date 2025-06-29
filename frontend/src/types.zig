@@ -211,6 +211,10 @@ pub const GameState = struct {
     prng: std.Random.DefaultPrng = undefined,
     last_screen_width: i32 = 0,
     last_screen_height: i32 = 0,
+    // Logo texture (loaded once at startup)
+    logo_texture: rl.Texture2D = undefined,
+    // Flag to check if the logo texture has been successfully loaded
+    logo_loaded: bool = false,
 };
 
 // --- Question Pool ---
