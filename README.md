@@ -1,5 +1,9 @@
 # TruthByte
 
+<p align="center">
+  <img src="logo-128.png" alt="TruthByte Logo">
+</p>
+
 A minimal Zig+WASM game that crowdsources human truth judgments to build better LLM evaluation datasets. Play a fast round of "True or False?" — every answer trains the future.
 
 **🎮 [Play Now: truthbyte.voidtalker.com](https://truthbyte.voidtalker.com)**
