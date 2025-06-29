@@ -16,6 +16,9 @@ The frontend is built in **Zig** and compiles to **WebAssembly (WASM)** for web 
 ### Game Modes
 - **Arcade Mode**: Classic 7-question sessions with category and difficulty selection
 - **Categories Mode**: Browse and play questions from specific categories
+  - Category filtering with question counts
+  - Difficulty level selection (Easy, Medium, Hard)
+  - Custom session lengths
 - **Daily Mode**: **NEW** Daily challenge with 10 deterministic questions, streak tracking, and ranking system
 
 ### Build Targets
@@ -756,3 +759,80 @@ pub fn debugLog(comptime message: []const u8, args: anytype) void {
 3. **Auth failures**: Check `api.zig` callback functions
 4. **Performance**: Monitor browser console for errors
 5. **Rendering issues**: Check `render.zig` layout calculations
+
+## Security Constraints
+
+The frontend implements comprehensive security measures to ensure safe user input and prevent malicious content:
+
+### Input Validation Rules
+```
+Question Input:
+- Length: 5-200 characters
+- Content: Printable ASCII + basic punctuation
+- Pattern blocking: <script>, javascript:, eval(), etc.
+- Binary content detection and blocking
+
+Tag Input:
+- Individual tag length: Max 50 characters
+- Total tags length: Max 150 characters
+- Allowed chars: Letters, numbers, spaces, hyphens, underscores
+- Maximum 5 tags per question
+```
+
+### Security Features
+- **Real-time Validation**: Immediate clearing of malicious content
+- **Pattern Detection**: Blocks suspicious code patterns and injection attempts
+- **Input Sanitization**: Removes unsafe characters and excessive whitespace
+- **Length Limits**: Enforced on both client and server side
+- **Binary Prevention**: Detects and blocks non-text content
+- **XSS Protection**: Comprehensive blocking of script injection attempts
+
+## Error Handling and Offline Support
+
+The frontend implements robust error handling and offline capabilities:
+
+### Authentication and Network
+- **Auth Timeout**: 10-second timeout with graceful degradation
+- **Connection Messages**: 
+  - "Connecting to server..."
+  - "Still connecting..." (after 5s)
+  - "Connection timeout. Using offline mode." (after 10s)
+- **Manual Fallback**: Tap-to-skip after 8 seconds
+
+### Offline Mode
+- **Automatic Fallback**: Switches to offline mode on connection failure
+- **Available Features**:
+  - Local question pool
+  - Basic game modes
+  - Score tracking
+  - Daily mode (limited functionality)
+- **State Management**:
+  - Resets streak counters
+  - Maintains local progress
+  - Preserves user preferences
+
+### Error Recovery
+- **Network Errors**: Graceful fallback to offline mode
+- **Data Parsing**: Safe handling of malformed responses
+- **State Recovery**: Maintains game progress during errors
+- **User Feedback**: Clear error messages and status updates
+
+## User Data Management
+
+The frontend implements a comprehensive user data management system:
+
+### Streak Tracking
+- **Current Streak**: Tracks consecutive daily completions
+- **Best Streak**: Records highest achieved streak
+- **Streak Requirements**: 70% correct answers to maintain streak
+
+### Progress Persistence
+- **Daily Progress**: Tracks completion status per day
+- **Answer History**: Records user responses and timing
+- **Category Progress**: Tracks performance by category
+
+### Statistics
+- **Score History**: Maintains record of past performances
+- **Category Stats**: Tracks success rates by category
+- **Time Analysis**: Records answer timing data
+- **Difficulty Stats**: Tracks performance across difficulty levels

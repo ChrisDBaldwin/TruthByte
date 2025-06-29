@@ -224,21 +224,12 @@ export fn on_user_data_received(success: i32, data_ptr: [*]const u8, data_len: u
             // Get current date from JavaScript
             const date_str = utils.js.get_current_date_slice();
 
-            // Debug logging
-            std.debug.print("Daily progress found. Is object: {}, Is empty: {}\n", .{
-                progress_value == .object,
-                if (progress_value == .object) progress_value.object.count() == 0 else false,
-            });
-
             // Handle empty object case
             if (progress_value == .object and progress_value.object.count() == 0) {
-                std.debug.print("Empty daily progress object, skipping\n", .{});
                 state.daily_completed_today = false;
             } else if (progress_value.object.get(date_str)) |today_progress| {
-                std.debug.print("Found progress for today\n", .{});
                 if (today_progress.object.get("answers")) |answers_value| {
                     if (answers_value == .array and answers_value.array.items.len > 0) {
-                        std.debug.print("Found {} answers for today\n", .{answers_value.array.items.len});
                         state.daily_completed_today = true;
 
                         // Calculate stats
@@ -280,8 +271,6 @@ export fn on_user_data_received(success: i32, data_ptr: [*]const u8, data_len: u
                 }
             }
         }
-
-        std.debug.print("Successfully loaded user data - current_streak: {}, best_streak: {}, daily_score: {}%\n", .{ state.current_streak, state.best_streak, state.daily_score });
     } else {
         // Handle error - just continue without user data
         const error_msg = if (data_len > 0) data_ptr[0..data_len] else "Unknown error";
@@ -639,22 +628,14 @@ fn parseDailyQuestionsFromJson(state: *types.GameState, json_str: []const u8) bo
         // Get current date from JavaScript
         const date_str = utils.js.get_current_date_slice();
 
-        // Debug logging
-        std.debug.print("Daily progress found in questions response. Is object: {}, Is empty: {}\n", .{
-            progress_value == .object,
-            if (progress_value == .object) progress_value.object.count() == 0 else false,
-        });
-
         // Skip if it's an empty object
         if (progress_value == .object and progress_value.object.count() == 0) {
-            std.debug.print("Empty daily progress object in questions response, skipping\n", .{});
             state.daily_completed_today = false;
             return true;
         }
 
         // Check for answers for today
         if (progress_value.object.get(date_str)) |today_progress| {
-            std.debug.print("Found progress for today in questions response\n", .{});
             if (today_progress.object.get("answers")) |answers_value| {
                 if (answers_value == .array and answers_value.array.items.len > 0) {
                     state.daily_completed_today = true;
@@ -788,6 +769,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
     var answers = std.ArrayList(struct {
         question_id: []const u8,
         answer: bool,
+        timestamp: i64,
     }).init(allocator);
     defer answers.deinit();
 
@@ -797,6 +779,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
             answers.append(.{
                 .question_id = response.question_id,
                 .answer = response.answer.?,
+                .timestamp = response.start_time,
             }) catch |err| {
                 std.debug.print("Failed to append answer {}: {any}\n", .{ i, err });
                 continue;
@@ -812,7 +795,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
     const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch |err| {
         std.debug.print("Failed to stringify daily submission: {any}\n", .{err});
         // If JSON creation fails, go to finished state
-        state.game_state = .Finished;
+        state.game_state = .DailyReview;
         return;
     };
 

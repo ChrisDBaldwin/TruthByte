@@ -9,6 +9,8 @@ A minimal Zig+WASM game that crowdsources human truth judgments to build better 
 **For comprehensive documentation, see the [`docs/`](docs/) directory:**
 - **[Architecture Overview](docs/ARCHITECTURE.md)** - Complete system design and technical overview
 - **[API Reference](docs/API_REFERENCE.md)** - All endpoints, authentication, and data models
+- **[Database Guide](docs/DATABASE.md)** - DynamoDB schema, query strategies, and operations
+- **[Development Guide](docs/DEVELOPMENT.md)** - Setup, environment variables, troubleshooting, and best practices
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Infrastructure setup and deployment procedures
 - **[AI Agent Specs](docs/AGENTIC_SPECS.md)** - Specifications for AI coding assistants
 
@@ -62,7 +64,7 @@ cd frontend
 zig build -Dtarget=wasm32-emscripten run
 ```
 
-For detailed setup instructions, see the [Development Guide](#development-guide).
+For detailed setup instructions, see the [Development Guide](#development-guide) and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Project Overview
 
@@ -76,7 +78,7 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 
 ### System Components
 
-🟢 **Frontend (WASM/Zig) — Working**
+🟢 **Frontend (WASM/Zig)**
 - Compiles to WASM and renders the quiz UI in the browser
 - **Full mobile touch support** with iOS Safari optimizations
 - **Persistent User Identity**: UUID v4 generation and localStorage persistence via `user.zig`
@@ -86,33 +88,41 @@ For detailed setup instructions, see the [Development Guide](#development-guide)
 - **User tracking**: All API calls include X-User-ID header for backend user management
 - Optional "Submit your own question" flow is planned
 
-🟢 **Backend (Python) — Production Ready**
-- **High-Performance Architecture**: Tag-based querying with zero table scans
-- **Dual-Table Design**: Optimized question storage and tag indexing
-- **Sub-second Response**: Fast, predictable query performance at scale
+🟢 **Backend (Python)**
+- **Hybrid Query Strategy**: Uses category/tag-based indexing when available, with automatic fallback to filtered table scans for reliability and fault tolerance
+- **Dual-Table Design**: Optimized question storage and tag/category indexing
+- **Sub-second Response**: Fast, predictable query performance for indexed queries; 1-2s for fallback scans
 - **Auto-Deployment**: Fully automated AWS infrastructure deployment
-- **JWT Authentication**: Secure token-based authentication system
+- **JWT Authentication**: Secure token-based authentication system with refresh tokens and robust error handling
+- **Rate Limiting**: All endpoints are rate limited for abuse prevention (see API docs for details)
+- **Error Handling & Debug Info**: Standardized error responses with optional debug information in development
 - Provides:
-  - `GET /session` → generates JWT authentication tokens
-  - `GET /fetch-questions` → returns randomized questions by tag (defaults to 'general')
+  - `GET /session` → generates JWT authentication tokens (access + refresh)
+  - `POST /refresh` → obtain new access token using refresh token
+  - `GET /fetch-questions` → returns randomized questions by tag/category (defaults to 'general')
   - `POST /submit-answers` → receives user answers + timing, computes trust score
   - `POST /propose-question` → saves user-submitted questions to pending pool
   - `GET /get-user` → retrieves user profile and statistics
   - `GET /auth-ping` → validates JWT tokens (debug endpoint)
-  - Efficient DynamoDB integration with batch operations
+  - Efficient DynamoDB integration with batch operations and fallback strategies
 - Production features: CloudFormation infrastructure, automated S3 artifacts, Lambda packaging
 
-🟠 **Admin (Manual Review) — Manual Process**
-- No moderation dashboard yet
-- Manual question promotion/rejection process
-- Tag management through backend endpoints or direct data file edits
+🟠 **Admin (AWS Console)**
+
+**Manual Data Management for Hackathon/Demo:**
+- Use the [AWS DynamoDB Console](https://console.aws.amazon.com/dynamodb/) to view, edit, add, or delete items in your tables (e.g., `dev-truthbyte-questions`, `dev-truthbyte-submitted-questions`).
+- To approve/reject user-submitted questions: Edit the `status` field in the `dev-truthbyte-submitted-questions` table.
+- To add/edit/delete questions: Use the `dev-truthbyte-questions` table.
+- For categories: Use the `dev-truthbyte-categories` table.
+- Always select the correct AWS region. Use the "Scan" feature to filter items (e.g., status = pending).
+- For bulk operations, you can export/import JSON via the console.
 
 ### Data Flow
 
 ```
 User → Frontend (WASM) → GET /session (get JWT token)
                        → GET /fetch-questions?tag=science
-                           ↑ (tag-based, no scans)
+                           ↑ (hybrid query: index or fallback scan)
      ↓ answers w/ timing  → POST /submit-answers
      ↓ new question       → POST /propose-question
      ↓ user stats         → GET /get-user
@@ -128,7 +138,7 @@ User → Frontend (WASM) → GET /session (get JWT token)
 │ id: "q001"      │    │ tag: "science"   │◄───┤ GET /questions  │
 │ question: "..." │    │ question_id:     │    │ ?tag=science    │
 │ answer: true    │    │   "q001"         │    │                 │
-│ tags: [...]     │    │                  │    │ Fast tag query  │
+│ tags: [...]     │    │                  │    │ Hybrid query    │
 │ title: "..."    │    │ tag: "general"   │    │ → Batch get IDs │
 │ passage: "..."  │    │ question_id:     │    │ → Random select │
 └─────────────────┘    │   "q001"         │    └─────────────────┘
@@ -159,6 +169,8 @@ TruthByte is fully optimized for mobile devices with comprehensive touch input s
 - ✅ Desktop (Chrome, Firefox, Safari, Edge)
 
 ## Development Guide
+
+For backend setup, environment variables, troubleshooting, and best practices, see [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ### Prerequisites
 
@@ -198,7 +210,7 @@ $env:EMSDK="path/to/your/emsdk"  # e.g., "C:\code\git\emsdk"
 set EMSDK=path/to/your/emsdk
 
 # Unix/macOS
-export EMSDK=/path/to/your/emsdk
+export EMSDK=/path/to/emsdk
 ```
 
 2. **Permanent Setup**:

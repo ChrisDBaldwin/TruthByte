@@ -45,14 +45,26 @@ Authenticating → Loading → Answering → [Submitting/Finished]
 ### Success Path:
 - ✅ Authentication succeeds
 - 🎯 Sets `auth_initialized = true`
-- 📋 Calls `startSession()` to load questions
-- 🎮 Game proceeds normally with authenticated API calls
+- 📋 Calls `startUserDataFetch()` to load user data
+- 🎮 Game proceeds with authenticated API calls
 
 ### Failure Path:
 - ❌ Authentication fails
 - 🔄 Sets `auth_initialized = false`
-- 📋 Falls back to offline question pool
-- 🎮 Game still playable but without server features
+- 📋 Initializes offline state:
+  - Resets streak counters
+  - Sets daily_completed_today = false
+  - Enables offline daily mode
+- 🎮 Game continues in offline mode with local features
+
+### Timeout Handling:
+- ⏱️ 10-second connection timeout
+- 📢 Progressive status messages:
+  - 0-5s: "Connecting to server..."
+  - 5-10s: "Still connecting..."
+  - >10s: "Connection timeout. Using offline mode."
+- 👆 Manual skip available after 8 seconds (tap anywhere)
+- 🔄 Automatic fallback to offline mode after timeout
 
 ## 🧪 Testing Instructions
 
@@ -90,8 +102,15 @@ You should see authentication flow logs:
 ### 5. **Network Inspection**
 Open browser dev tools → Network tab:
 - **`/session`**: Should return JWT token
+  - Success: 200 OK with token
+  - Failure: 401/403 triggers offline mode
+  - Timeout: No response triggers offline mode
 - **`/fetch-questions`**: Should include `Authorization: Bearer <token>` header
+  - Success: 200 OK with questions
+  - Failure: Falls back to offline pool
 - **`/ping`**: Should validate token when pressing 'P'
+  - Success: {"valid": true, "payload": {...}}
+  - Invalid token: Triggers re-authentication
 
 ## 🔍 Verification Checklist
 
@@ -108,31 +127,73 @@ Open browser dev tools → Network tab:
 - **Check**: Backend JWT_SECRET environment variable is set
 - **Check**: `/session` endpoint is deployed and accessible
 - **Check**: CORS headers allow your frontend domain
+- **Resolution**: 
+  - App continues in offline mode
+  - All features available with local data
+  - Re-authentication attempted on next startup
 
 ### **Issue**: Questions still use fallback pool
 - **Check**: `/fetch-questions` endpoint requires authentication
 - **Check**: JWT tokens are being sent in requests
 - **Check**: Backend can verify JWT signatures
+- **Resolution**:
+  - Verify network requests in browser dev tools
+  - Check token expiration
+  - Confirm backend logs for auth errors
 
 ### **Issue**: "Auth ping failed" when pressing 'P'
 - **Check**: `/ping` endpoint is deployed
 - **Check**: JWT token is valid and not expired
 - **Check**: Backend JWT verification is working
+- **Resolution**:
+  - Check browser console for token details
+  - Verify backend logs for validation errors
+  - Test endpoint directly with valid token
 
 ## 📊 Expected API Flow
 
 ```
 1. GET /session
-   Response: {"token": "eyJ...", "session_id": "demo-session-123"}
+   Response: 
+   Success: {"token": "eyJ...", "session_id": "demo-session-123"}
+   Failure: 401/403 or timeout → offline mode
 
 2. GET /fetch-questions 
    Headers: Authorization: Bearer eyJ...
-   Response: {"questions": [...], "count": 7}
+   Response:
+   Success: {"questions": [...], "count": 7}
+   Failure: Use offline question pool
 
 3. GET /ping (debug)
    Headers: Authorization: Bearer eyJ...
-   Response: {"valid": true, "payload": {"session_id": "...", "exp": ...}}
+   Response:
+   Success: {"valid": true, "payload": {"session_id": "...", "exp": ...}}
+   Failure: {"valid": false, "error": "..."}
 ```
+
+## 🔐 Offline Mode Details
+
+When authentication fails or times out, the frontend gracefully degrades to offline mode:
+
+### Available Features
+- ✅ All game modes (with local data)
+- ✅ Score tracking
+- ✅ Daily challenges
+- ✅ Category filtering
+- ❌ Online leaderboards
+- ❌ Streak synchronization
+- ❌ Cross-device progress
+
+### Data Management
+- 📝 Uses local storage for persistence
+- 🔄 Maintains offline progress
+- 💾 Caches frequently used data
+- 🔒 Preserves user preferences
+
+### Recovery
+- 🔄 Attempts re-authentication on next startup
+- 📱 Syncs data when connection restored
+- 🔐 Preserves offline progress after sync
 
 ## 🎉 Ready to Test!
 

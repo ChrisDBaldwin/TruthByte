@@ -4,20 +4,72 @@ Complete reference for TruthByte's DynamoDB database architecture, schema, and d
 
 ## Architecture Overview
 
-TruthByte uses a **multi-table design** optimized for category-based queries without expensive table scans:
+TruthByte uses a **hybrid query approach** with fallback mechanisms:
 
 ```
-Questions Table      Question-Categories Table    Categories Table
-     ↓                      ↓                         ↓
-  Full Data         ←→   Category Indexing      Category Metadata
-(by question ID)      (by category + question ID)  (counts, names)
+Primary Strategy    →    Fallback Strategy
+Category Index     →    Filtered Table Scan
+(when available)   →    (with pagination)
 ```
 
 ### Key Benefits
-- **🚀 No Table Scans**: All queries use efficient indexing
-- **⚡ Sub-second Response**: Fast, predictable performance
-- **💰 Cost Efficient**: Predictable DynamoDB costs
-- **📈 Highly Scalable**: Performance doesn't degrade with size
+- **🚀 Flexible Querying**: Multiple query strategies for reliability
+- **⚡ Optimized Performance**: Sub-second for indexed queries, 1-2s for scans
+- **💰 Cost Management**: Balanced approach between scans and indexes
+- **📈 Fault Tolerance**: Automatic fallback if tables unavailable
+
+## Query Patterns
+
+### Primary Strategy (Category Index)
+```python
+try:
+    # Try using category index
+    response = categories_table.query(
+        KeyConditionExpression=Key('category').eq(category),
+        FilterExpression=Attr('difficulty').eq(difficulty) if difficulty else None
+    )
+    items = response['Items']
+except Exception:
+    # Fall back to scan strategy
+    items = fallback_scan_strategy()
+```
+
+### Fallback Strategy (Table Scan)
+```python
+def fallback_scan_strategy():
+    scan_params = {
+        'FilterExpression': Attr('categories').contains(category),
+        'Limit': num_questions * 50
+    }
+    
+    items = []
+    scan_count = 0
+    
+    while len(items) < required_count and scan_count < 3:
+        response = questions_table.scan(**scan_params)
+        items.extend(response.get('Items', []))
+        
+        if 'LastEvaluatedKey' not in response:
+            break
+            
+        scan_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
+        scan_count += 1
+    
+    return items
+```
+
+### Performance Characteristics
+
+1. Category Index Query:
+- Response Time: 100-500ms
+- Cost: Low (uses index)
+- Availability: Depends on table status
+
+2. Fallback Table Scan:
+- Response Time: 1-2 seconds
+- Cost: Higher (full table scan)
+- Availability: Always available
+- Pagination: Up to 3 scan operations
 
 ## Table Schemas
 
@@ -43,10 +95,31 @@ Billing: Pay-per-request
 }
 ```
 
-**Usage Pattern:**
-- **Batch Read**: Get multiple questions by ID list
-- **Single Read**: Get specific question by ID
-- **No Scans**: Never scan this table directly
+**Query Patterns:**
+1. Direct ID Lookup:
+```python
+response = questions_table.get_item(Key={'id': question_id})
+```
+
+2. Category-based Query (with scan):
+```python
+scan_params = {
+    'FilterExpression': Attr('categories').contains(category),
+    'Limit': num_questions * 50
+}
+response = questions_table.scan(**scan_params)
+```
+
+3. Batch Operations:
+```python
+response = questions_table.batch_get_item(
+    RequestItems={
+        'questions_table': {
+            'Keys': [{'id': qid} for qid in question_ids]
+        }
+    }
+)
+```
 
 ### 2. Question-Categories Table
 **Table Name**: `{environment}-truthbyte-question-categories`
@@ -66,11 +139,225 @@ Billing: Pay-per-request
 }
 ```
 
-**Usage Pattern:**
-- **Query by Category**: Get all question IDs for a category
-- **Difficulty Filtering**: Filter questions by difficulty within category
-- **Random Sampling**: Client-side randomization of results
-- **High Performance**: O(1) category lookups
+**Query Patterns:**
+1. Category Lookup:
+```python
+response = categories_table.query(
+    KeyConditionExpression=Key('category').eq(category),
+    FilterExpression=Attr('difficulty').eq(difficulty) if difficulty else None
+)
+```
+
+2. Fallback (if table unavailable):
+```python
+# Fall back to questions table scan
+response = questions_table.scan(
+    FilterExpression=Attr('categories').contains(category)
+)
+```
+
+### Error Handling
+
+1. Table Not Available:
+```python
+try:
+    categories_table = dynamodb.Table(categories_table_name)
+    categories_table.table_status  # Test if table exists
+    USE_CATEGORIES_TABLE = True
+except Exception:
+    USE_CATEGORIES_TABLE = False
+    # Fall back to questions table scan
+```
+
+2. Scan Pagination:
+```python
+items = []
+scan_count = 0
+while len(items) < required_count and scan_count < 3:
+    response = table.scan(**scan_params)
+    items.extend(response.get('Items', []))
+    
+    if 'LastEvaluatedKey' not in response:
+        break
+        
+    scan_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
+    scan_count += 1
+```
+
+## Performance Optimization
+
+### Query Optimization
+
+1. Minimize Table Scans:
+```python
+if USE_CATEGORIES_TABLE:
+    # Use efficient category-based query
+    response = categories_table.query(...)
+else:
+    # Fall back to filtered scan
+    response = questions_table.scan(...)
+```
+
+2. Batch Operations:
+```python
+# Prefer batch operations over multiple single operations
+batch_response = dynamodb.batch_get_item(
+    RequestItems={
+        'questions_table': {
+            'Keys': [{'id': qid} for qid in question_ids]
+        }
+    }
+)
+```
+
+3. Pagination Control:
+```python
+# Limit initial scan size
+scan_params = {
+    'Limit': num_questions * 50,  # Higher limit for filtering
+    'FilterExpression': Attr('categories').contains(category)
+}
+```
+
+### Cost Optimization
+
+1. Selective Scanning:
+```python
+# Only scan when necessary
+if category == 'general':
+    scan_params = {'Limit': num_questions * 10}  # Lower limit for general
+else:
+    scan_params = {
+        'FilterExpression': Attr('categories').contains(category),
+        'Limit': num_questions * 50  # Higher limit for filtering
+    }
+```
+
+2. Caching Strategy:
+```python
+# Cache category counts
+category_counts = {}
+def get_category_count(category):
+    if category not in category_counts:
+        response = categories_table.get_item(
+            Key={'name': category}
+        )
+        category_counts[category] = response['Item']['count']
+    return category_counts[category]
+```
+
+## Monitoring and Debugging
+
+### CloudWatch Metrics
+
+Monitor these metrics:
+- ProvisionedReadCapacityUnits
+- ConsumedReadCapacityUnits
+- SuccessfulRequestLatency
+- ThrottledRequests
+
+### Debug Logging
+
+Enable detailed logging:
+```python
+import boto3
+import logging
+
+# Enable boto3 debug logging
+boto3.set_stream_logger('botocore', logging.DEBUG)
+
+# Log query parameters
+print(f"Query params: {query_params}")
+print(f"Requested {num_questions} questions for category: {category}")
+
+# Log results
+print(f"Retrieved {len(items)} items for category: {category}")
+if items:
+    print(f"Sample item structure: {items[0]}")
+```
+
+## Migration and Maintenance
+
+### Table Creation
+
+```bash
+aws dynamodb create-table \
+    --table-name dev-truthbyte-questions \
+    --attribute-definitions \
+        AttributeName=id,AttributeType=S \
+    --key-schema \
+        AttributeName=id,KeyType=HASH \
+    --billing-mode PAY_PER_REQUEST
+```
+
+### Data Migration
+
+1. Export data:
+```python
+def export_table(table_name):
+    table = dynamodb.Table(table_name)
+    response = table.scan()
+    with open(f'{table_name}_backup.json', 'w') as f:
+        json.dump(response['Items'], f)
+```
+
+2. Import data:
+```python
+def import_table(table_name, items):
+    table = dynamodb.Table(table_name)
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.put_item(Item=item)
+```
+
+## Security Considerations
+
+### Access Control
+
+1. IAM Policies:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:Query",
+                "dynamodb:Scan",
+                "dynamodb:GetItem",
+                "dynamodb:BatchGetItem"
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:*:*:table/dev-truthbyte-*"
+            ]
+        }
+    ]
+}
+```
+
+2. Encryption:
+- Enable encryption at rest
+- Use AWS KMS for key management
+- Enable CloudTrail logging
+
+### Best Practices
+
+1. Data Validation:
+- Use Pydantic models
+- Validate input parameters
+- Sanitize user input
+
+2. Error Handling:
+- Implement retries
+- Log errors
+- Provide meaningful error messages
+
+3. Monitoring:
+- Set up CloudWatch alarms
+- Monitor capacity usage
+- Track error rates
+
+## Table Schemas
 
 ### 3. Categories Table
 **Table Name**: `{environment}-truthbyte-categories`

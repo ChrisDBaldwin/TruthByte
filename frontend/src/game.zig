@@ -229,23 +229,32 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
 
     // Don't process input during loading, but check for timeout
     if (state.game_state == .Loading or state.game_state == .Authenticating) {
+        // Distinguish waiting for daily submission vs initial loading
+        const waiting_submission = (state.session.mode == .Daily and state.session.finished);
         // Check for loading timeout (10 seconds for better UX)
         const current_time = std.time.timestamp();
         const loading_duration = current_time - state.loading_start_time;
         if (loading_duration > 10) {
-            state.loading_message = "Connection timeout. Using offline mode.";
-            api.initSessionWithFallback(state);
+            if (!waiting_submission) {
+                state.loading_message = "Connection timeout. Using offline mode.";
+                api.initSessionWithFallback(state);
+            } else {
+                // Still waiting for submission; keep loading without fallback
+                state.loading_message = "Submission taking longer than expected...";
+            }
         } else if (loading_duration > 5) {
             // Show intermediate message
             if (state.game_state == .Authenticating) {
                 state.loading_message = "Still connecting...";
+            } else if (waiting_submission) {
+                state.loading_message = "Still submitting answers...";
             } else {
                 state.loading_message = "Still loading questions...";
             }
         }
 
-        // Allow manual fallback after 8 seconds by tapping
-        if (loading_duration > 8) {
+        // Allow manual fallback after 8 seconds by tapping (only during initial loading)
+        if (!waiting_submission and loading_duration > 8) {
             if (input.getInputEvent(state)) |input_event| {
                 if (input_event.pressed) {
                     state.loading_message = "Switching to offline mode...";
@@ -254,8 +263,8 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
             }
         }
 
-        // Emergency state fix for mobile - if stuck in loading for too long, force answering state
-        if (loading_duration > 12 and is_mobile) {
+        // Emergency state fix for mobile - if stuck in loading for too long, force answering state (only during initial loading)
+        if (!waiting_submission and loading_duration > 12 and is_mobile) {
             if (state.session.questions.len == 0 or state.session.questions[0].question.len == 0) {
                 // Session not properly initialized, use fallback
                 api.initSessionWithFallback(state);
@@ -553,7 +562,6 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
 
             // Check if this was the last question BEFORE incrementing
             const was_last_question = (state.session.current + 1) >= state.session.total_questions;
-            state.session.current += 1;
 
             if (was_last_question) {
                 state.session.finished = true;
@@ -564,6 +572,9 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 // Handle different completion flows based on mode
                 if (state.session.mode == .Daily) {
                     // Submit daily answers
+                    state.loading_message = "Submitting answers...";
+                    state.loading_start_time = std.time.timestamp(); // Reset loading timer specifically for submission wait
+                    state.game_state = .Loading;
                     api.submitDailyAnswers(state);
                 } else {
                     // Regular arcade/categories mode
@@ -571,6 +582,7 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                     api.submitResponseBatch(&state.user_session);
                 }
             }
+            state.session.current += 1;
             state.response.answer = null;
             state.selected = null;
         } else if (state.game_state == .Finished and rl.checkCollisionPointRec(pos, layout.continue_rect)) {
