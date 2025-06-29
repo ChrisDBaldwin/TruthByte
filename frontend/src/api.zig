@@ -788,6 +788,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
     var answers = std.ArrayList(struct {
         question_id: []const u8,
         answer: bool,
+        timestamp: i64,
     }).init(allocator);
     defer answers.deinit();
 
@@ -797,6 +798,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
             answers.append(.{
                 .question_id = response.question_id,
                 .answer = response.answer.?,
+                .timestamp = response.start_time,
             }) catch |err| {
                 std.debug.print("Failed to append answer {}: {any}\n", .{ i, err });
                 continue;
@@ -812,7 +814,7 @@ pub fn submitDailyAnswers(state: *types.GameState) void {
     const json_str = std.json.stringifyAlloc(allocator, submission, .{}) catch |err| {
         std.debug.print("Failed to stringify daily submission: {any}\n", .{err});
         // If JSON creation fails, go to finished state
-        state.game_state = .Finished;
+        state.game_state = .DailyReview;
         return;
     };
 

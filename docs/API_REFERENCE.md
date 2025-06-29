@@ -6,6 +6,7 @@ Complete reference for all TruthByte API endpoints, authentication, and data mod
 
 - **Production**: `https://api.truthbyte.voidtalker.com/v1`
 - **Development**: Determined by CloudFormation stack deployment
+- **Local**: `http://localhost:3000/v1`
 
 ## Authentication
 
@@ -20,34 +21,98 @@ GET /session
 **Response:**
 ```json
 {
-  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-  "session_id": "demo-session-123",
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "token_type": "Bearer",
   "expires_in": 43200
 }
 ```
 
-### Using Tokens
-
-Include the JWT token in the Authorization header:
+### Token Refresh
 
 ```http
-Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+POST /refresh
 ```
 
-### User Identification
+**Request Body:**
+```json
+{
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}
+```
 
-All protected endpoints also require a user identifier in the X-User-ID header:
+**Response:**
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "token_type": "Bearer",
+  "expires_in": 43200
+}
+```
 
+### Error Responses
+
+All endpoints may return these error responses:
+
+**401 Unauthorized:**
+```json
+{
+  "error": "Token has expired",
+  "error_code": "token_expired"
+}
+```
+
+**400 Bad Request:**
+```json
+{
+  "error": "Missing X-User-ID header",
+  "error_code": "missing_header"
+}
+```
+
+**500 Internal Server Error:**
+```json
+{
+  "error": "Internal server error",
+  "error_code": "internal_error",
+  "request_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+### Debug Information
+
+All error responses may include additional debug information in development environments:
+
+```json
+{
+  "error": "No questions found for category: science",
+  "error_code": "not_found",
+  "debug_info": {
+    "scan_limit": 100,
+    "filter_applied": true,
+    "total_scanned_items": 50,
+    "categories_table_available": true,
+    "requested_category": "science",
+    "category_is_general": false,
+    "python_filter_applied": true
+  }
+}
+```
+
+## Rate Limiting
+
+All endpoints are rate limited:
+
+- **Authentication endpoints**: 100 requests per hour per IP
+- **Protected endpoints**: 1000 requests per hour per user
+- **Question submission**: 3 questions per hour, 10 per day per user
+
+Rate limit headers are included in all responses:
 ```http
-X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1616173264
 ```
-
-**User ID Requirements:**
-- Must be a valid UUID v4 format
-- Generated and managed by the frontend application
-- Persistent across user sessions via localStorage
-- Used for user tracking, statistics, and trust scoring
-- Automatically created on first application launch
 
 ## Endpoints
 
@@ -56,30 +121,31 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 #### GET `/session`
 **Purpose**: Generate JWT session token  
 **Authentication**: None required  
-**Parameters**: None
+**Rate Limit**: 100/hour/IP
 
 **Response:**
 ```json
 {
-  "token": "string",
-  "session_id": "string", 
+  "access_token": "string",
+  "refresh_token": "string",
+  "token_type": "Bearer",
   "expires_in": 43200
 }
 ```
 
 ### 🔒 Protected Endpoints
 
-All endpoints below require JWT authentication.
+All endpoints below require JWT authentication and X-User-ID header.
 
 #### GET `/fetch-questions`
 **Purpose**: Retrieve randomized questions by category and difficulty  
-**Authentication**: Bearer token required
+**Authentication**: Bearer token required  
+**Rate Limit**: 1000/hour/user
 
 **Query Parameters:**
 - `category` (optional): Category filter (default: "general")
 - `difficulty` (optional): Difficulty filter 1-5 (default: all difficulties)
-- `num_questions` (optional): Number of questions (default: 5, max: 10)
-- `tag` (optional): Legacy parameter, use `category` instead
+- `num_questions` (optional): Number of questions (default: 7, max: 20)
 
 **Example Request:**
 ```http
@@ -88,7 +154,7 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
 ```
 
-**Response:**
+**Success Response:**
 ```json
 {
   "questions": [
@@ -99,14 +165,30 @@ X-User-ID: 12345678-1234-4xxx-yxxx-xxxxxxxxxxxx
       "passage": "All biomass goes through at least some of these steps...",
       "answer": false,
       "categories": ["science", "energy"],
-      "difficulty": 3,
-      "tags": ["science", "energy"]
+      "difficulty": 3
     }
   ],
   "count": 1,
   "category": "science",
   "difficulty": 3,
   "requested_count": 7
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "error": "No questions found for category: science",
+  "error_code": "not_found",
+  "debug_info": {
+    "scan_limit": 100,
+    "filter_applied": true,
+    "total_scanned_items": 50,
+    "categories_table_available": true,
+    "requested_category": "science",
+    "category_is_general": false,
+    "python_filter_applied": true
+  }
 }
 ```
 
