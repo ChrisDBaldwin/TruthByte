@@ -434,8 +434,8 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.input_active = true;
                 state.tags_input_active = false;
 
-                // Use HTML input overlay ONLY for touch/mobile devices
-                if (input_event.source == .touch) {
+                // Use HTML input overlay for both touch and mobile devices
+                if (input_event.source == .touch or is_mobile) {
                     // Small delay to ensure previous input is cleaned up
                     const question_text = state.input_buffer[0..state.input_len];
                     _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.input_box.x)), @as(i32, @intFromFloat(layout.input_box.y)), @as(i32, @intFromFloat(layout.input_box.width)), @as(i32, @intFromFloat(layout.input_box.height)), "");
@@ -459,8 +459,8 @@ pub export fn update(state: *types.GameState) callconv(.C) void {
                 state.tags_input_active = true;
                 state.input_active = false;
 
-                // Use HTML input overlay ONLY for touch/mobile devices
-                if (input_event.source == .touch) {
+                // Use HTML input overlay for both touch and mobile devices
+                if (input_event.source == .touch or is_mobile) {
                     // Small delay to ensure previous input is cleaned up
                     const tags_text = state.tags_input_buffer[0..state.tags_input_len];
                     _ = utils.js.showTextInputWithString(@as(i32, @intFromFloat(layout.tags_input_box.x)), @as(i32, @intFromFloat(layout.tags_input_box.y)), @as(i32, @intFromFloat(layout.tags_input_box.width)), @as(i32, @intFromFloat(layout.tags_input_box.height)), "");
