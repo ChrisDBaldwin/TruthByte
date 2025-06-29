@@ -549,32 +549,45 @@ var TruthByteLib = {
       textInput.type = 'text';
       textInput.id = 'truthbyte-text-input';
       
-      // Styling for contenteditable div
+      // Detect if we're on mobile
+      var isMobile = /iPhone|iPod|Android/i.test(navigator.userAgent);
+      
+      // Styling for input element
       textInput.style.position = 'absolute';
       textInput.style.zIndex = '10000';
       textInput.style.fontSize = '16px';
       textInput.style.fontFamily = 'Arial, sans-serif';
-      textInput.style.outline = 'none'; // Remove focus outline
-      textInput.style.whiteSpace = 'nowrap'; // Prevent line breaks
-      textInput.style.overflow = 'hidden'; // Hide overflow
+      textInput.style.outline = 'none';
+      textInput.style.whiteSpace = 'nowrap';
+      textInput.style.overflow = 'hidden';
+      textInput.style.boxSizing = 'border-box';
+      textInput.style.borderRadius = '4px';
       
       // Position the input exactly over the game's input box area
       textInput.style.left = x + 'px';
       textInput.style.top = y + 'px';
       textInput.style.width = width + 'px';
       textInput.style.height = height + 'px';
-      textInput.style.opacity = '0.0';
-      textInput.style.display = 'block';
-      textInput.style.visibility = 'visible';
-      textInput.style.pointerEvents = 'none'; // Start non-interactive
-      textInput.style.backgroundColor = 'transparent';
-      textInput.style.border = 'none'; // No border at all
-      textInput.style.outline = 'none'; // No outline
-      textInput.style.color = 'transparent';
-      textInput.style.caretColor = 'transparent'; // Hide cursor too
-      textInput.style.lineHeight = height + 'px'; // Vertical center
-      textInput.style.paddingLeft = '8px';
-      textInput.style.boxSizing = 'border-box';
+      
+      if (isMobile) {
+        // On mobile, make the input visible and interactive
+        textInput.style.opacity = '1.0';
+        textInput.style.pointerEvents = 'auto';
+        textInput.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        textInput.style.border = '2px solid #666';
+        textInput.style.color = '#000';
+        textInput.style.caretColor = '#000';
+        textInput.style.paddingLeft = '8px';
+      } else {
+        // On desktop, keep it invisible but functional
+        textInput.style.opacity = '0.0';
+        textInput.style.pointerEvents = 'none';
+        textInput.style.backgroundColor = 'transparent';
+        textInput.style.border = 'none';
+        textInput.style.color = 'transparent';
+        textInput.style.caretColor = 'transparent';
+        textInput.style.paddingLeft = '8px';
+      }
       
       // Add event listeners
       textInput.addEventListener('keydown', function(e) {
@@ -748,10 +761,31 @@ var TruthByteLib = {
        document.body.appendChild(textInput);
       
       // For touch users, focus the input immediately to make it interactive
-      // For mouse users, it stays non-interactive (pointerEvents: 'none')
       setTimeout(function() {
         if (textInput && textInput.parentNode) {
-          textInput.focus();
+          if (isMobile) {
+            // On mobile, we need to be more aggressive about showing the keyboard
+            textInput.readOnly = false;
+            textInput.setAttribute('inputmode', 'text');
+            textInput.setAttribute('enterkeyhint', 'done');
+            
+            // Prevent zoom on focus (iOS)
+            const viewport = document.querySelector('meta[name=viewport]');
+            if (viewport) {
+              const originalContent = viewport.content;
+              viewport.content = originalContent + ', maximum-scale=1.0';
+              textInput.addEventListener('blur', function() {
+                viewport.content = originalContent;
+              });
+            }
+            
+            // Force focus and click to show keyboard
+            textInput.focus();
+            textInput.click();
+          } else {
+            // On desktop, just focus
+            textInput.focus();
+          }
         }
       }, 50);
     }, 10);

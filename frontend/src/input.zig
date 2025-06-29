@@ -210,11 +210,12 @@ pub fn getInputEvent(state: *types.GameState) ?InputEvent {
 pub fn handleTextInput(state: *types.GameState) void {
     if (state.game_state != .Submitting or (!state.input_active and !state.tags_input_active)) return;
 
-    // Determine if we should use HTML input (mobile/touch) or raylib input (PC/mouse)
-    const use_html_input = utils.js.isTextInputFocused() and state.last_touch_active;
+    // Check if we're on mobile/touch device
+    const size = utils.get_canvas_size();
+    const is_mobile = size.w < 600 and size.h > size.w;
 
-    // Check if HTML text input is focused AND we're using touch input - if so, sync text from it
-    if (use_html_input) {
+    // Always use HTML input for mobile devices
+    if (is_mobile) {
         const html_input_text = utils.js.getTextInputValueSlice();
 
         // SECURITY: Validate and sanitize HTML input
@@ -282,6 +283,7 @@ pub fn handleTextInput(state: *types.GameState) void {
         }
     }
 
+    // Handle backspace for desktop users
     if (rl.isKeyPressed(.backspace)) {
         if (state.input_active and state.input_len > 0) {
             state.input_len -= 1;

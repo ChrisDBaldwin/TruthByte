@@ -31,6 +31,12 @@ pub const INPUT_BOX_WIDTH = 400;
 pub const INPUT_BOX_HEIGHT = 40;
 pub const BUTTON_GAP = 40;
 
+// New mobile-specific dimensions
+pub const MOBILE_INPUT_BOX_WIDTH = 320; // Slightly smaller to fit mobile screens better
+pub const MOBILE_INPUT_BOX_HEIGHT = 50; // Taller for better touch targets
+pub const MOBILE_TEXT_PADDING = 15; // More padding for touch
+pub const MOBILE_ELEMENT_SPACING = 50; // More spacing between elements for touch
+
 // --- Category Selection UI ---
 pub const CATEGORY_BUTTON_WIDTH_SMALL: i32 = 160;
 pub const CATEGORY_BUTTON_WIDTH_LARGE: i32 = 200;
