@@ -1273,6 +1273,31 @@ fn drawModeSelectionScreen(state: *types.GameState, layout: UILayout) void {
     const title_y = layout.progress_y - 60; // Move title higher for better spacing
     rl.drawText(title, title_x, title_y, constants.large_font, state.fg_color);
 
+    // ----------------------------------------------------------
+    // Draw the TruthByte logo (if loaded) above the title, scaled up to
+    // preserve pixel-art crispness and tinted with the current foreground color.
+    // ----------------------------------------------------------
+    if (state.logo_loaded) {
+        const scale: f32 = 4.0; // 32x32 → 128x128
+        const logo_w_scaled: i32 = @as(i32, @intFromFloat(@as(f32, @floatFromInt(state.logo_texture.width)) * scale));
+        const logo_h_scaled: i32 = @as(i32, @intFromFloat(@as(f32, @floatFromInt(state.logo_texture.height)) * scale));
+
+        const logo_x = if (is_horizontal)
+            @as(i32, @intFromFloat(layout.arcade_mode_btn.x)) + @divTrunc(200 - logo_w_scaled, 2)
+        else
+            @divTrunc((layout.screen_width - logo_w_scaled), 2);
+
+        const logo_y = title_y - logo_h_scaled - 10; // 10px gap above title
+
+        rl.drawTextureEx(
+            state.logo_texture,
+            rl.Vector2{ .x = @as(f32, @floatFromInt(logo_x)), .y = @as(f32, @floatFromInt(logo_y)) },
+            0.0,
+            scale,
+            state.fg_color,
+        );
+    }
+
     // Draw mode buttons with better alignment under title
     drawModeButtonSimple(layout.arcade_mode_btn, "ARCADE MODE", state, constants);
     drawModeButtonSimple(layout.categories_mode_btn, "CATEGORIES", state, constants);

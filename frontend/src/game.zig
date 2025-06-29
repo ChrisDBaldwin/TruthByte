@@ -188,6 +188,32 @@ pub export fn init(allocator: *std.mem.Allocator) callconv(.C) *anyopaque {
     state.bg_color = pal.bg;
     state.fg_color = pal.fg;
 
+    // Load the TruthByte logo texture (32x32 PNG with transparency)
+    // The file is located in the `res/` directory which is embedded
+    // into the WASM bundle by the build script. If the file is not
+    // found (e.g., during early development), we simply skip drawing
+    // the logo.
+    const logo_path = "res/logo.png";
+
+    // Attempt to load the logo image. Use catch unreachable since we handle all errors
+    // by simply not loading the logo.
+    const img = rl.loadImage(logo_path) catch {
+        state.logo_loaded = false;
+        return @ptrCast(@alignCast(state));
+    };
+
+    // Try to create texture from the loaded image
+    const tex = rl.loadTextureFromImage(img) catch {
+        rl.unloadImage(img);
+        state.logo_loaded = false;
+        return @ptrCast(@alignCast(state));
+    };
+
+    // Success - store the texture and mark as loaded
+    state.logo_texture = tex;
+    state.logo_loaded = true;
+    rl.unloadImage(img);
+
     // Initialize user ID management
     user.initUserID(&state.prng);
 

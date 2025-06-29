@@ -92,9 +92,9 @@ fn build_web(
     const link_step = try rlz.emcc.linkWithEmscripten(b, &[_]*std.Build.Step.Compile{ exe_lib, ctx.raylib_artifact });
 
     // -----------------------------------------------------------------------
-    // !!!EMBED FILES IF YOU HAVE ANY!!!
-    // link_step.addArg("--embed-file");
-    // link_step.addArg("res/");
+    // Embed resources such as textures and fonts so they are available at runtime
+    link_step.addArg("--embed-file");
+    link_step.addArg("res/");
     // -----------------------------------------------------------------------
 
     link_step.addArg("--shell-file");
